@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" font-family="Helvetica,Arial,sans-serif">
+<rect width="900" height="600" fill="white"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5568"/></marker></defs>
+<text x="60" y="24" font-size="14" fill="#1a202c">GlassBox KPI graph (compiled from contracts/*.yaml drivers)</text>
+<line x1="351.8" y1="352.8" x2="60.0" y2="230.0" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="205.9" y="291.4" font-size="9" fill="#718096">basket</text>
+<line x1="351.8" y1="352.8" x2="123.1" y2="449.5" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="237.5" y="401.2" font-size="9" fill="#718096">basket</text>
+<line x1="840.0" y1="318.9" x2="719.9" y2="540.0" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="780.0" y="429.4" font-size="9" fill="#718096">funnel_steps</text>
+<line x1="457.9" y1="317.5" x2="704.4" y2="422.5" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="581.2" y="370.0" font-size="9" fill="#718096">revenue_identity</text>
+<line x1="457.9" y1="317.5" x2="351.8" y2="352.8" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="404.9" y="335.1" font-size="9" fill="#718096">revenue_identity</text>
+<line x1="457.9" y1="317.5" x2="719.9" y2="540.0" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="588.9" y="428.7" font-size="9" fill="#718096">order_volume</text>
+<line x1="457.9" y1="317.5" x2="840.0" y2="318.9" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="649.0" y="318.2" font-size="9" fill="#718096">order_volume</text>
+<line x1="457.9" y1="317.5" x2="60.0" y2="230.0" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="259.0" y="273.8" font-size="9" fill="#718096">basket_value</text>
+<line x1="457.9" y1="317.5" x2="123.1" y2="449.5" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="290.5" y="383.5" font-size="9" fill="#718096">basket_value</text>
+<line x1="457.9" y1="317.5" x2="294.1" y2="60.0" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="376.0" y="188.7" font-size="9" fill="#718096">fulfilment_quality</text>
+<line x1="704.4" y1="422.5" x2="719.9" y2="540.0" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="712.2" y="481.3" font-size="9" fill="#718096">order_funnel</text>
+<line x1="704.4" y1="422.5" x2="840.0" y2="318.9" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="772.2" y="370.7" font-size="9" fill="#718096">order_funnel</text>
+<circle cx="351.8" cy="352.8" r="34" fill="#2b6cb0"/>
+<text x="351.8" y="352.8" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">Average Order Value</text>
+<circle cx="840.0" cy="318.9" r="34" fill="#2b6cb0"/>
+<text x="840.0" y="318.9" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">Conversion Rate</text>
+<circle cx="294.1" cy="60.0" r="34" fill="#2b6cb0"/>
+<text x="294.1" y="60.0" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">Delivery SLA Attainment</text>
+<circle cx="457.9" cy="317.5" r="34" fill="#2b6cb0"/>
+<text x="457.9" y="317.5" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">Net Revenue</text>
+<circle cx="704.4" cy="422.5" r="34" fill="#2b6cb0"/>
+<text x="704.4" y="422.5" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">Orders</text>
+<circle cx="60.0" cy="230.0" r="24" fill="#a0aec0"/>
+<text x="60.0" y="230.0" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">units_per_order</text>
+<circle cx="123.1" cy="449.5" r="24" fill="#a0aec0"/>
+<text x="123.1" y="449.5" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">unit_price</text>
+<circle cx="719.9" cy="540.0" r="24" fill="#a0aec0"/>
+<text x="719.9" y="540.0" font-size="9" fill="white" text-anchor="middle" dominant-baseline="middle">sessions</text>
+</svg>

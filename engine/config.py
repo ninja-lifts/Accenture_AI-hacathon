@@ -8,6 +8,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
+# Loaded at import time, before the dataclass field defaults below are
+# evaluated - os.getenv() defaults are computed once, at class-body
+# execution, so .env must be in the environment before that happens.
+load_dotenv(override=False)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -32,5 +39,5 @@ class Settings:
 
 
 def load() -> Settings:
-    """TODO(Phase 0): read .env if present, return frozen Settings."""
-    raise NotImplementedError
+    """Return frozen Settings (.env already merged into os.environ at import)."""
+    return Settings()
