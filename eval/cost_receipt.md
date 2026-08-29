@@ -6,7 +6,7 @@ Runs measured: 15      Mode: replay
 tokens in  (mean / p95)   0  /  0
 tokens out (mean / p95)   0  /  0
 USD per run (mean)        0.0000
-latency p50 / p95 (ms)    424  /  797
+latency p50 / p95 (ms)    474  /  881
 rows scanned (mean)       29531
 LLM calls per run (max observed / cap)   0 / 2
 
