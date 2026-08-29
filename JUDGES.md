@@ -37,26 +37,30 @@ If you only do one of these, do **step 2**.
 
 Add:
 
-4. [`TRAJECTORIES.md`](TRAJECTORIES.md) §1 — **SC-01**, the hero, all seven
+4. [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) — a real,
+   run-not-invented B1 (naive drill-down) baseline. It asserts a confident
+   cause on **all 3** of the scenarios where none was planted. GlassBox's
+   rate on the same three: zero.
+5. [`TRAJECTORIES.md`](TRAJECTORIES.md) §1 — **SC-01**, the hero, all seven
    stages with real numbers: a courier-collapse cause found, and a genuinely
    confounding national promotion (real, well-timed, well-documented)
    correctly demoted by a falsification test rather than picked because it
    was plausible.
-5. [`TRAJECTORIES.md`](TRAJECTORIES.md) §3 — **SC-14**. A support ticket in
+6. [`TRAJECTORIES.md`](TRAJECTORIES.md) §3 — **SC-14**. A support ticket in
    the evidence set contains a live prompt-injection attack
    ("IGNORE ALL PREVIOUS INSTRUCTIONS..."). It's retrieved — hiding it would
    be the weaker system — flagged, cited as ordinary evidence, and never
    acted on. It also turned up, unplanned, while retrieving evidence for
    SC-08 (a different scenario) and was correctly flagged there too — that
    wasn't staged, we found it while writing the trace.
-6. Run the real test suite:
+7. Run the real test suite:
    ```bash
    pytest -q
    ```
    8 tests, including one that validates every scenario's output against the
    frozen `schemas/findings.schema.json`, and one proving tier assignment is
    monotone (removing evidence can never raise a confidence tier).
-7. Switch persona in a Python shell and diff the `entitlements_hash`:
+8. Switch persona in a Python shell and diff the `entitlements_hash`:
    ```python
    from engine import pipeline
    import datetime as dt
@@ -76,12 +80,13 @@ Add:
 
 ## If you have 30 minutes
 
-8. [REPRODUCE.md](REPRODUCE.md) — clean-environment setup, `make data`,
-   `make eval`, `make test`. Your scorecard should match ours exactly (it's
-   deterministic — we reran it twice this session and got byte-identical
-   output both times).
-9. [`prompts/`](prompts/) — the only two model calls in the system, in full.
-10. [`eval/scorecard.md`](eval/scorecard.md)'s full Misses section — every
+9. [REPRODUCE.md](REPRODUCE.md) — clean-environment setup and real,
+   measured timings (no `make` on the machine we built this on either — every
+   step has a plain `python`/`pip` equivalent). Your scorecard should match
+   ours exactly (it's deterministic — we reran it twice this session and got
+   byte-identical output both times).
+10. [`prompts/`](prompts/) — the only two model calls in the system, in full.
+11. [`eval/scorecard.md`](eval/scorecard.md)'s full Misses section — every
     non-passing scenario explained with what was actually predicted vs. the
     true segment, not just restated as a failure.
 
@@ -132,13 +137,16 @@ We would rather name these than have you find them.
 - **There is no UI.** `app/main.py` is unbuilt. The engine is real,
   ~80% of the technical work, and everything above can be verified without
   one — but a live, clickable demo does not exist right now.
-- **The B3 (LLM-only) baseline hasn't been run.** The comparison it would
-  produce — SC-08 side by side, GlassBox abstaining vs. a single prompt
-  confidently inventing a cause — is the single most legible argument this
-  submission could make, and it isn't in the repo yet because it requires a
-  live model call and this build environment has none configured. The
-  scaffolding exists (`eval/baselines/README.md`); it has not been faked to
-  fill the gap.
+- **The B3 (LLM-only) baseline hasn't been run**, though B1 has:
+  [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) is real, and it's
+  already the strongest comparison in the repo — a naive drill-down asserts a
+  cause on **3 of 3** scenarios where none was planted (SC-02, SC-08, SC-17),
+  because it has no concept of declining. GlassBox's rate on those same three
+  is 0/3. B3 (same data, one LLM prompt, no pipeline) would be the sharper
+  version of that same comparison but needs a live model call to be honest
+  evidence, and this build environment has none configured. The prompt-
+  payload construction is real (`eval/baselines/run_all.py::build_b3_payload`);
+  only the model call is missing, and it hasn't been faked to fill the gap.
 - **The primary dataset is synthetic.** It has to be — no public dataset
   pairs business KPIs with customer text *and* labelled causes
   ([why](docs/05_DATA_STRATEGY.md#2-why-the-ideal-dataset-does-not-exist)).

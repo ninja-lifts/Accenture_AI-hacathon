@@ -108,12 +108,17 @@ the right answers:
 | Abstention recall (caught the negative control) | 1.00 (1/1) |
 | Abstention precision | 0.25 (1/4) |
 
-*B1 (naive drill-down) and B3 (single-LLM-prompt) baseline columns are not in
-this table because they haven't been run yet — B1's harness isn't built, and
-B3 specifically needs a live model call to be honest evidence, which this
-build environment doesn't have configured. See `eval/baselines/README.md` and
-`CHECKLIST.md` for status; we would rather leave the columns out than invent
-what they'd show.*
+*B3 (single-LLM-prompt) isn't in this table because it needs a live model
+call to be honest evidence, which this build environment doesn't have
+configured — see `eval/baseline_scorecard.md` for what's real about it (a
+constructed, unsent prompt payload) and what isn't (a response). B1 (naive
+drill-down — rank the biggest single-dimension segment, cite the most recent
+matching ticket, no falsification) is real and run:
+[`eval/baseline_scorecard.md`](eval/baseline_scorecard.md). It gets the exact
+segment right on 2/17 and — the number that matters — **asserts a cause on
+all 3 of the scenarios where none was planted** (SC-02, SC-08, SC-17), because
+a naive drill-down has no concept of declining to answer. GlassBox's rate on
+those same 3 scenarios is 0/3.*
 
 The 10 non-exact scenarios split two ways, neither of which is a fabrication:
 3 abstain conservatively where an answer was possible (the system declining

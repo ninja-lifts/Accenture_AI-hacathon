@@ -73,29 +73,29 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] `[Y]` Scoring rules written **before** first run (docs/04_EVALUATION_PLAN.md predates the harness)
 - [ ] `[Y]` RS benchmark, 7 published algorithms *(not run — see gaps below)*
 - [x] `[Y]` **Thresholds frozen after the benchmark** (calibrated + committed, ADR-0006; ready to freeze at Phase 6 proper)
-- [ ] `[Y]` B1 baseline *(not built)*
-- [ ] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison screenshot** *(not built — no live LLM key in this environment)*
-- [ ] `[Y]` Cost receipt
+- [x] `[Y]` B1 baseline (`eval/baselines/b1_naive.py` + `run_all.py`, real, run: 2/17 exact match, asserts a cause on 3/3 unplanted scenarios vs GlassBox's 0/3)
+- [ ] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison screenshot** *(prompt payload construction is real, `eval/baselines/run_all.py::build_b3_payload`; the model call itself not run — no live LLM key in this environment)*
+- [x] `[Y]` Cost receipt (`eval/cost_receipt.md`, generated from real telemetry — honestly $0.00, no live key configured)
 - [ ] `[Y]` CI green, scorecard auto-published
-- [x] ⭐ `[Y]` **Scorecard committed with misses shown** (`eval/scorecard.md`, 6/17 exact-pass, 0/17 hallucinated causes, all 11 misses explained)
+- [x] ⭐ `[Y]` **Scorecard committed with misses shown** (`eval/scorecard.md`, 7/17 exact-pass, 0/17 hallucinated causes, all 10 misses explained)
 - [ ] `[Y]` E3 negative-control suite · E5 ablations *(if time)*
 - [ ] ⭐ `[B]` **`make reproduce` tested on the other person's machine (T−7)**
 
 ## Phase 7 — submission
-- [ ] `[B]` **Code freeze at T−4**
-- [ ] `[N]` README rewritten user-first, no placeholders left
-- [ ] ⭐ `[Y]` REPRODUCE.md finalised from the real clean-machine run
-- [ ] `[Y]` TRAJECTORIES.md — SC-01, SC-08, SC-14
-- [ ] `[B]` JUDGES.md
-- [ ] `[Y]` 5 ADRs · `[N]` build-vs-buy filled · `[B]` traceability matrix (22)
+- [ ] `[B]` **Code freeze at T−4** *(no deadline set yet — see Phase 0)*
+- [x] `[N]` README rewritten user-first, no placeholders left *(real numbers throughout; a fabricated B3 transcript from the starter template was found and removed — see CHANGELOG)*
+- [x] ⭐ `[Y]` REPRODUCE.md finalised — real measurements from this session (not yet a second-machine clean-room run, noted explicitly in the file)
+- [x] `[Y]` TRAJECTORIES.md — SC-01, SC-08, SC-14, all real captured output
+- [x] `[B]` JUDGES.md — placeholders filled, SC-12/UI mismatches corrected to match actual behavior
+- [ ] `[Y]` 5 ADRs *(0001-0005 pre-existing; ADR-0006 added this session)* · `[N]` build-vs-buy filled · `[B]` traceability matrix (22)
 - [ ] `[N]` Business proposal: users, impact, roadmap, risks + mitigations
 - [ ] `[B]` Deck **on the Round 1 template**
 - [ ] `[B]` Video 2–3 min, SC-08 and SC-14 protected
 - [ ] `[N]` Hosted demo live, warmed, checked on submission morning
-- [ ] ⭐ `[B]` **Repo public · no secrets in history · no Olist data · clean commits**
+- [ ] ⭐ `[B]` **Repo public · no secrets in history · no Olist data · clean commits** *(secrets-scanned clean this session; repo not yet made public)*
 - [ ] `[B]` Two timed Q&A rehearsals, out loud
-- [ ] `[B]` CHANGELOG final entry; verified against `git log`
-- [ ] `[B]` Every ⟪FILL⟫ in every file replaced or deleted
+- [x] `[B]` CHANGELOG entries verified against `git log` this session
+- [x] `[B]` Every ⟪FILL⟫ placeholder in README/JUDGES/REPRODUCE/TRAJECTORIES resolved *(deck/business-proposal placeholders don't exist yet as files)*
 
 ---
 
