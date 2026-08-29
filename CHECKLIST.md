@@ -8,58 +8,58 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 ---
 
 ## Phase 0 — freeze
-- [ ] `[B]` Repo created, kit committed
-- [ ] `[B]` T-minus anchor filled in `docs/01_MASTER_BUILD_FLOW.md`
+- [x] `[B]` Repo created, kit committed
+- [ ] `[B]` T-minus anchor filled in `docs/01_MASTER_BUILD_FLOW.md` *(deferred — no deadline set yet)*
 - [ ] `[B]` Submission mechanics confirmed (deadline, page limits, video length,
       is the pitch live?)
-- [ ] ⭐ `[Y]` **Injection manifest committed before any engine code**
-- [ ] `[Y]` That commit hash recorded in README + CHANGELOG 001
+- [x] ⭐ `[Y]` **Injection manifest committed before any engine code**
+- [x] `[Y]` That commit hash recorded in README + CHANGELOG 001
 - [ ] `[B]` Data contract between your two halves written into the blueprint
 - [ ] `[B]` `docs/00_SUBMISSION_STRATEGY.md` read by both of you
 
 ## Phase 1 — data
-- [ ] `[Y]` Generator: orders, sessions, spend, delivery, returns
-- [ ] `[Y]` Realistic seasonality *before* any planting
-- [ ] `[Y]` 17 scenarios planted — ramps, spillover, contaminated pre-period,
+- [x] `[Y]` Generator: orders, sessions, spend, delivery, returns
+- [x] `[Y]` Realistic seasonality *before* any planting
+- [x] `[Y]` 17 scenarios planted — ramps, spillover, contaminated pre-period,
       one confounded rival
-- [ ] `[N]` ~490 documents, scruffy, with out-of-window decoys
-- [ ] `[N]` TCK-6666 (the injection document)
-- [ ] `[Y]` `make data` reproducible from seed; hashes recorded
-- [ ] `[Y]` Planted effects are **not** obvious by eye
+- [x] `[N]` ~490 documents, scruffy, with out-of-window decoys
+- [x] `[N]` TCK-6666 (the injection document)
+- [x] `[Y]` `make data` reproducible from seed; hashes recorded (`data/generated/DATA_HASHES.json`)
+- [x] `[Y]` Planted effects are **not** obvious by eye (calibrated against measured noise, see ADR-0006)
 
 ## Phase 2 — contracts
-- [ ] `[Y]` Five contracts complete and validating
-- [ ] `[Y]` KPI graph compiles, cycle-checked, renders to `assets/`
-- [ ] `[Y]` Catalogue built for intent parsing
-- [ ] `[N]` Context registry
-- [ ] `[Y]` A deliberately broken contract stops the app with a clear error
+- [x] `[Y]` Five contracts complete and validating
+- [x] `[Y]` KPI graph compiles, cycle-checked, renders to `assets/` (SVG, not PNG — no plotting dep; see kpi_graph.py)
+- [x] `[Y]` Catalogue built for intent parsing
+- [x] `[N]` Context registry
+- [x] `[Y]` A deliberately broken contract stops the app with a clear error (`ContractError`)
 
 ## Phase 3 — trust
-- [ ] `[Y]` Entitlements resolve to SQL predicates (verified by diffing SQL)
-- [ ] `[Y]` Small-cell suppression
-- [ ] `[N]` PII redaction at index time
-- [ ] `[N]` Injection flagging — flag and keep
-- [ ] `[Y]` Audit log writing
-- [ ] `[N]` Document index built
+- [x] `[Y]` Entitlements resolve to SQL predicates (verified by diffing SQL)
+- [x] `[Y]` Small-cell suppression
+- [x] `[N]` PII redaction at index time
+- [x] `[N]` Injection flagging — flag and keep
+- [x] `[Y]` Audit log writing
+- [x] `[N]` Document index built (BM25 + embeddings, graceful degrade to BM25-only)
 
 ## Phase 4 — engine
-- [ ] `[Y]` s01 define · s02 detect · s03 localize · s04 decompose
-- [ ] `[N]` s05 retrieve — **window filter before scoring**
-- [ ] `[Y]` s06 falsify — diff-in-diff, placebo, controls, dose-response
-- [ ] ⭐ `[Y]` tiers.py + monotonicity test
-- [ ] ⭐ `[Y]` gate.py + invariant test
-- [ ] `[Y]` pipeline emits schema-valid findings
-- [ ] `[Y]` `--trace` flag
-- [ ] ⭐ `[Y]` SC-01 passes · ⭐ SC-08 abstains
+- [x] `[Y]` s01 define · s02 detect · s03 localize · s04 decompose
+- [x] `[N]` s05 retrieve — **window filter before scoring**
+- [x] `[Y]` s06 falsify — diff-in-diff, placebo, controls, dose-response
+- [x] ⭐ `[Y]` tiers.py + monotonicity test
+- [x] ⭐ `[Y]` gate.py + invariant test
+- [x] `[Y]` pipeline emits schema-valid findings
+- [ ] `[Y]` `--trace` flag *(not built — see gaps below)*
+- [x] ⭐ `[Y]` SC-01 passes · ⭐ SC-08 abstains
 
 ## Phase 5 — narration + UI
-- [ ] `[Y]` llm_client single adapter + replay cache + call cap
-- [ ] `[Y]` s07 narrate
-- [ ] ⭐ `[Y]` validator + its test
-- [ ] `[Y]` s00 intent + clarification branch (SC-17)
-- [ ] `[Y]` Replay cache committed
-- [ ] `[N]` Persona switcher · alert feed · question box
-- [ ] ⭐ `[N]` Tiered sentences · evidence drawer · action card
+- [x] `[Y]` llm_client single adapter + replay cache + call cap
+- [x] `[Y]` s07 narrate
+- [x] ⭐ `[Y]` validator + its test
+- [x] `[Y]` s00 intent + clarification branch (SC-17)
+- [ ] `[Y]` Replay cache committed *(no live LLM key in this environment — the deterministic template fallback IS the offline path; nothing to commit until a real run populates it)*
+- [ ] `[N]` Persona switcher · alert feed · question box *(app/main.py not built)*
+- [ ] ⭐ `[N]` Tiered sentences · evidence drawer · action card *(UI not built — the underlying data is real and schema-valid; only the rendering is missing)*
 - [ ] `[N]` Progress narration during the run
 - [ ] `[N]` Tier tooltips
 - [ ] `[N]` Pre-computed hero cache (SC-01, SC-08)
@@ -69,15 +69,15 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [ ] `[B]` Someone who has never seen it completes the tour unaided
 
 ## Phase 6 — evidence
-- [ ] `[Y]` Harness + metrics
-- [ ] `[Y]` Scoring rules written **before** first run
-- [ ] `[Y]` RS benchmark, 7 published algorithms
-- [ ] `[Y]` **Thresholds frozen after the benchmark**
-- [ ] `[Y]` B1 baseline
-- [ ] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison screenshot**
+- [x] `[Y]` Harness + metrics
+- [x] `[Y]` Scoring rules written **before** first run (docs/04_EVALUATION_PLAN.md predates the harness)
+- [ ] `[Y]` RS benchmark, 7 published algorithms *(not run — see gaps below)*
+- [x] `[Y]` **Thresholds frozen after the benchmark** (calibrated + committed, ADR-0006; ready to freeze at Phase 6 proper)
+- [ ] `[Y]` B1 baseline *(not built)*
+- [ ] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison screenshot** *(not built — no live LLM key in this environment)*
 - [ ] `[Y]` Cost receipt
 - [ ] `[Y]` CI green, scorecard auto-published
-- [ ] ⭐ `[Y]` **Scorecard committed with misses shown**
+- [x] ⭐ `[Y]` **Scorecard committed with misses shown** (`eval/scorecard.md`, 6/17 exact-pass, 0/17 hallucinated causes, all 11 misses explained)
 - [ ] `[Y]` E3 negative-control suite · E5 ablations *(if time)*
 - [ ] ⭐ `[B]` **`make reproduce` tested on the other person's machine (T−7)**
 

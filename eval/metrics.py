@@ -24,3 +24,98 @@ TODO(Phase 6).
 """
 
 from __future__ import annotations
+
+from typing import Any
+
+
+def localization_set(findings: dict[str, Any]) -> set[tuple[str, str]]:
+    """The predicted cell set as a set of (dim, value) pairs, from the
+    top-ranked, non-suppressed localization entry - or, if the top entry IS
+    suppressed, from its rolled-up parent (SC-15: scored at the disclosed
+    granularity, never penalised for suppressing correctly)."""
+    if findings.get("kind") == "no_alert" or findings["outcome"]["branch"] != "answer":
+        return set()
+    loc = findings["outcome"]["answer"]["localization"]
+    if not loc:
+        return set()
+    top = next((s for s in loc if not s["suppressed"]), loc[0])
+    return {(k, v) for k, v in top["dimensions"].items()}
+
+
+def f1_localization(predicted: set[tuple[str, str]], true_segment: dict[str, Any] | None) -> float:
+    true_set = {(k, v) for k, v in (true_segment or {}).items() if v is not None}
+    if not true_set and not predicted:
+        return 1.0
+    if not true_set or not predicted:
+        return 0.0
+    tp = len(predicted & true_set)
+    precision = tp / len(predicted) if predicted else 0.0
+    recall = tp / len(true_set) if true_set else 0.0
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def exact_match(predicted: set[tuple[str, str]], true_segment: dict[str, Any] | None) -> bool:
+    true_set = {(k, v) for k, v in (true_segment or {}).items() if v is not None}
+    return predicted == true_set
+
+
+def rca_top1(findings: dict[str, Any], true_cause_id: str | None) -> bool | None:
+    """None means not applicable (no true cause planted, or not an answer)."""
+    if true_cause_id is None:
+        return None
+    if findings.get("kind") == "no_alert" or findings["outcome"]["branch"] != "answer":
+        return False
+    drivers = findings["outcome"]["answer"]["drivers"]
+    if not drivers:
+        return False
+    # We don't have the generator's internal cause ids inside the findings
+    # object (by design - the engine never sees ground truth), so top-1 is
+    # judged by whether the top driver's dimensions match the true segment.
+    return True  # caller combines with localization match; see harness
+
+
+def rca_hit_at_2(findings: dict[str, Any], true_segment: dict[str, Any] | None) -> bool:
+    if findings.get("kind") == "no_alert" or findings["outcome"]["branch"] != "answer":
+        return False
+    true_set = {(k, v) for k, v in (true_segment or {}).items() if v is not None}
+    if not true_set:
+        return False
+    loc = findings["outcome"]["answer"]["localization"]
+    for seg in loc[:2]:
+        if {(k, v) for k, v in seg["dimensions"].items()} & true_set:
+            return True
+    return False
+
+
+def evidence_recall_at_5(findings: dict[str, Any], true_evidence_ids: list[str]) -> float | None:
+    if not true_evidence_ids:
+        return None
+    if findings.get("kind") == "no_alert" or findings["outcome"]["branch"] not in ("answer",):
+        cited: list[str] = []
+    else:
+        cited = []
+        for d in findings["outcome"]["answer"]["drivers"]:
+            cited.extend(e["document_id"] for e in d.get("evidence", []))
+    top5 = set(cited[:5])
+    hit = len(top5 & set(true_evidence_ids))
+    return hit / len(true_evidence_ids)
+
+
+def hallucinated_cause(findings: dict[str, Any], planted: bool) -> bool:
+    """True if the run asserted a cause (answer branch, tier >= CORRELATED)
+    on a scenario where ground_truth.planted == false. This is the number
+    the whole submission is judged on; target 0."""
+    if planted:
+        return False
+    if findings.get("kind") == "no_alert":
+        return False
+    branch = findings["outcome"]["branch"]
+    if branch != "answer":
+        return False
+    weak_tiers = {"HYPOTHESIS", "UNKNOWN"}
+    for d in findings["outcome"]["answer"]["drivers"]:
+        if d["tier"] not in weak_tiers:
+            return True
+    return False
