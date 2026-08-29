@@ -20,10 +20,13 @@ from typing import Any
 # digits that are really part of an id like "TCK-4417" or "SC-01" - those are
 # preceded by <letter><hyphen>, which no genuine numeral in prose is.
 _NUM_RE = re.compile(
-    r"(?<![\w.])(?<![A-Za-z]-)(-?\d[\d,]*\.?\d*)\s*(%|crore|lakh|k\b)?",
+    r"(?<![\w.])(?<![A-Za-z]-)(-?\d[\d,]*\.?\d*)\s*(%|crore|lakh|million|mn\b|m\b|k\b)?",
     re.IGNORECASE,
 )
-_MULTIPLIERS = {"k": 1_000.0, "lakh": 100_000.0, "crore": 10_000_000.0}
+_MULTIPLIERS = {
+    "k": 1_000.0, "lakh": 100_000.0, "crore": 10_000_000.0,
+    "m": 1_000_000.0, "mn": 1_000_000.0, "million": 1_000_000.0,
+}
 
 
 def extract_numerals(text: str) -> list[float]:
@@ -54,6 +57,13 @@ def _collect_findings_numbers(obj: Any, out: set[float]) -> None:
         return
     if isinstance(obj, (int, float)):
         out.add(float(obj))
+    elif isinstance(obj, str):
+        # Some findings fields are themselves descriptive text (e.g. a
+        # falsification test's or rejected hypothesis's `detail`, e.g.
+        # "treated moved -9.2% vs control 0.0% (z=-2.4 ...)") - a numeral the
+        # narrator faithfully quotes FROM that text is not invented, so it
+        # must be in `allowed` too, not just literal JSON number values.
+        out.update(extract_numerals(obj))
     elif isinstance(obj, dict):
         for v in obj.values():
             _collect_findings_numbers(v, out)

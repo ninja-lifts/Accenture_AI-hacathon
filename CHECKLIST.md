@@ -57,16 +57,16 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] `[Y]` s07 narrate
 - [x] ⭐ `[Y]` validator + its test
 - [x] `[Y]` s00 intent + clarification branch (SC-17)
-- [ ] `[Y]` Replay cache committed *(no live LLM key in this environment — the deterministic template fallback IS the offline path; nothing to commit until a real run populates it)*
-- [ ] `[N]` Persona switcher · alert feed · question box *(app/main.py not built)*
-- [ ] ⭐ `[N]` Tiered sentences · evidence drawer · action card *(UI not built — the underlying data is real and schema-valid; only the rendering is missing)*
+- [ ] `[Y]` Replay cache committed — **not currently populated.** A Groq key became available this session and live narration was verified working for real (CHANGELOG 008-010, real quotes preserved there and in `eval/baseline_scorecard.md`), but a determinism bug fix (CHANGELOG 010's companion fix in `engine/pipeline.py::_setup`, forcing single-threaded DuckDB) invalidated the cache keys computed during testing, and repeated attempts to repopulate afterward hit long, unexplained hangs against the live API that this session couldn't resolve. `eval/replay_cache/narrate/` is empty; a fresh clone today gets the deterministic template narrator, which is still numerically correct, just less polished prose. Named honestly rather than claimed and left broken.
+- [x] `[N]` Persona switcher · alert feed(-equivalent) · question box (`app/main.py` — sidebar persona override + scenario picker; not yet browser-verified, see gaps below)
+- [x] ⭐ `[N]` Tiered sentences · evidence drawer · action card (`app/main.py::render_findings`)
 - [ ] `[N]` Progress narration during the run
-- [ ] `[N]` Tier tooltips
+- [ ] `[N]` Tier tooltips *(tier badges have a hover title with the gloss; not a dedicated tooltip UI)*
 - [ ] `[N]` Pre-computed hero cache (SC-01, SC-08)
-- [ ] `[N]` Scenario picker (including failures)
+- [x] `[N]` Scenario picker (including failures) — sidebar dropdown over all 17
 - [ ] `[N]` Three-channel render
 - [ ] `[N]` "Try to break it" tab
-- [ ] `[B]` Someone who has never seen it completes the tour unaided
+- [ ] `[B]` Someone who has never seen it completes the tour unaided — **not yet done; the Chrome browser tool couldn't connect this session, so the app has not been visually verified end to end, only import/syntax-checked**
 
 ## Phase 6 — evidence
 - [x] `[Y]` Harness + metrics
@@ -74,7 +74,7 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [ ] `[Y]` RS benchmark, 7 published algorithms *(not run — see gaps below)*
 - [x] `[Y]` **Thresholds frozen after the benchmark** (calibrated + committed, ADR-0006; ready to freeze at Phase 6 proper)
 - [x] `[Y]` B1 baseline (`eval/baselines/b1_naive.py` + `run_all.py`, real, run: 2/17 exact match, asserts a cause on 3/3 unplanted scenarios vs GlassBox's 0/3)
-- [ ] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison screenshot** *(prompt payload construction is real, `eval/baselines/run_all.py::build_b3_payload`; the model call itself not run — no live LLM key in this environment)*
+- [x] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison** — run live (`openai/gpt-oss-120b` via Groq), not simulated: on SC-08 specifically, produced a fluent, 70-80%-confident, fabricated cause. 2/3 unplanted scenarios hallucinated a cause; GlassBox 0/3. Real quotes in `eval/baseline_scorecard.md`. *(Screenshot itself not taken — the quote is the evidence; a screenshot would just be a picture of the same text.)*
 - [x] `[Y]` Cost receipt (`eval/cost_receipt.md`, generated from real telemetry — honestly $0.00, no live key configured)
 - [ ] `[Y]` CI green, scorecard auto-published
 - [x] ⭐ `[Y]` **Scorecard committed with misses shown** (`eval/scorecard.md`, 7/17 exact-pass, 0/17 hallucinated causes, all 10 misses explained)
@@ -87,15 +87,15 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] ⭐ `[Y]` REPRODUCE.md finalised — real measurements from this session (not yet a second-machine clean-room run, noted explicitly in the file)
 - [x] `[Y]` TRAJECTORIES.md — SC-01, SC-08, SC-14, all real captured output
 - [x] `[B]` JUDGES.md — placeholders filled, SC-12/UI mismatches corrected to match actual behavior
-- [ ] `[Y]` 5 ADRs *(0001-0005 pre-existing; ADR-0006 added this session)* · `[N]` build-vs-buy filled · `[B]` traceability matrix (22)
-- [ ] `[N]` Business proposal: users, impact, roadmap, risks + mitigations
-- [ ] `[B]` Deck **on the Round 1 template**
-- [ ] `[B]` Video 2–3 min, SC-08 and SC-14 protected
+- [x] `[Y]` 5 ADRs *(0001-0005 pre-existing; ADR-0006 added this session)* · `[N]` build-vs-buy filled (one factual correction: seasonality is a custom dow×month×festival decomposition, not literal statsmodels.STL — see the table) · `[ ]` traceability matrix (22) not built
+- [x] `[N]` Business proposal (`docs/09_BUSINESS_PROPOSAL.md`) — users, impact, roadmap, risks + mitigations; market-sizing numbers explicitly flagged as needing real customer discovery, not invented
+- [x] `[B]` Deck — content-complete, published as an artifact (not literally the Round 1 PPT template file, which wasn't available to build against); every number/quote pulled from committed files
+- [x] `[B]` Video **script** updated with real numbers/quotes (`docs/07_DEMO_AND_PITCH.md`) — **not recorded**, that step needs a person, a screen and a voice
 - [ ] `[N]` Hosted demo live, warmed, checked on submission morning
-- [ ] ⭐ `[B]` **Repo public · no secrets in history · no Olist data · clean commits** *(secrets-scanned clean this session; repo not yet made public)*
+- [ ] ⭐ `[B]` **Repo public · no secrets in history · no Olist data · clean commits** *(secrets-scanned clean this session; repo not yet made public — that's your call, not mine to make unilaterally)*
 - [ ] `[B]` Two timed Q&A rehearsals, out loud
 - [x] `[B]` CHANGELOG entries verified against `git log` this session
-- [x] `[B]` Every ⟪FILL⟫ placeholder in README/JUDGES/REPRODUCE/TRAJECTORIES resolved *(deck/business-proposal placeholders don't exist yet as files)*
+- [x] `[B]` Every ⟪FILL⟫ placeholder in README/JUDGES/REPRODUCE/TRAJECTORIES resolved
 
 ---
 

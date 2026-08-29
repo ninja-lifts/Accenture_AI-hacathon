@@ -168,8 +168,24 @@ LLM output) but it is not good prose — dict reprs leak into sentences. With a
 live key (`GLASSBOX_REPLAY=0` + `GLASSBOX_LLM_API_KEY`), the same findings
 object goes through `prompts/narrate.md` instead and produces natural
 persona-appropriate sentences; the fallback exists specifically so the system
-still runs, correctly and offline, with no key at all. We have not yet run
-this scenario with a live key to show that side — see JUDGES.md.
+still runs, correctly and offline, with no key at all.
+
+We *did* run this live this session (Groq, `openai/gpt-oss-120b`) and it
+produced exactly that — natural, correctly-validated prose, e.g. *"Net
+revenue fell 23.5% (Rs 34,99,600) in the week to 14 Aug... The primary
+driver is a localized movement in the Audio category within the South
+region..."* — real output, not written for this doc. That specific live run
+also surfaced three real bugs (a validator gap on "M"/million suffixes and
+on numerals embedded in string fields, and a floating-point non-determinism
+issue in `engine/pipeline.py::_setup` where DuckDB's default multi-threaded
+aggregation summed the same rows in a different order across process
+launches), all fixed — see CHANGELOG 009-010. The determinism fix,
+committed *after* that successful run, changed how the payload hashes,
+so that specific cached response didn't survive to be committed, and this
+session's later attempts to regenerate it hit long, unexplained hangs
+against the live API. The quote above is real; it just isn't currently
+sitting in `eval/replay_cache/` for offline replay. Named honestly in
+`CHECKLIST.md` rather than left as a stale claim.
 
 ### Result
 ```
@@ -221,7 +237,9 @@ Gate       0 candidates cleared the evidence floor
            → branch = ABSTENTION (no_candidate_passed_evidence_floor)
 ```
 
-**Full abstention output (template fallback, same caveat as SC-01 above):**
+**Full abstention output (template fallback — the default a fresh clone
+produces today; same caveat as SC-01 above about the live-run cache entry
+not currently being committed):**
 > Net Revenue moved -13.3% in the window to 2026-07-26, but no cause could be established that clears the evidence floor.
 
 **Ruled out:**
@@ -229,13 +247,31 @@ Gate       0 candidates cleared the evidence floor
 
 **Referral:** Analytics — "Movement is real and material; needs a human investigation with broader context."
 
-**The comparison this scenario is for.** `eval/baselines/` has the harness
-scaffolding for a B3 single-prompt baseline on this exact scenario (same
-retrieved documents, same aggregates, one prompt, no pipeline) but it has not
-been *run* — it needs a live model call to be honest evidence, and this
-environment has no API key configured. The scaffolding, what it would prove,
-and how to run it are in `eval/baselines/README.md`. Nothing was fabricated to
-fill this gap; it is named as open in `CHECKLIST.md`.
+**What the live run said instead** (Groq, `openai/gpt-oss-120b`, real output,
+captured this session): *"No cause could be established that clears the
+evidence floor, so the driver of this movement remains unknown. The
+hypothesis that the movement was localized to {'channel': 'Web'} was
+rejected by a falsification test (control segment moved -11.0%)...
+The case is referred to the Analytics team for a human investigation with
+broader context."* Same facts, better prose — and it correctly declines
+exactly as the template does.
+
+**The comparison this scenario is for — B3, and it WAS run, live, this
+session.** `eval/baselines/run_all.py` sends the same retrieved documents
+and the same aggregates GlassBox saw, in a single prompt, no pipeline, to
+the same live model. Its real, unedited answer on this exact scenario:
+
+> *"The drop in net revenue is driven mainly by a surge in returns and a
+> weaker mix of high-value orders: a packaging-related return issue
+> (TCK-6666) is pulling revenue down on the Web channel... I'm fairly
+> confident (around 70-80%) that returns and the degraded app experience
+> are the primary causes of the -13% revenue shortfall."*
+
+TCK-6666 is a real, retrieved document — and it is the SC-14 injection
+ticket, about a *different* scenario's packaging issue, cited here with
+70-80% confidence for a movement that has no planted cause at all. Full
+transcript: `eval/baseline_scorecard.md`. Nothing here was fabricated to
+make this point; it is what the model actually said.
 
 **What's real regardless of B3:** planted nothing here, salted the corpus with
 plausible decoys (including, unplanted, another scenario's injection
@@ -326,7 +362,10 @@ function, we think that is the right trade — but it is a trade, and it is
 recorded as [ADR-0003](docs/adr/0003-not-an-agent.md).
 
 **What's genuinely missing from this file:** a `--trace` CLI flag on
-`engine/pipeline.py` that produces this markdown automatically, and a run of
-all three scenarios with a live LLM key so the narration side of the trace
-can be shown too. Both are open items, not silently dropped — see
-`CHECKLIST.md`.
+`engine/pipeline.py` that produces this markdown automatically (everything
+above was captured by instrumenting the stage functions directly in a
+Python shell). SC-01 and SC-08 *were* run live this session with real
+narration shown above; SC-14 was not attempted live. The live SC-01/SC-08
+cache entries are not currently committed to `eval/replay_cache/` — see the
+honest account in `CHECKLIST.md` and CHANGELOG 009-010 for why. Both
+remaining gaps are open items, not silently dropped.

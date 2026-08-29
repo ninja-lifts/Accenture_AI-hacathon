@@ -22,6 +22,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,17 @@ def _setup(settings) -> dict[str, Any]:
     catalogue = contracts_mod.build_catalogue(all_contracts)
     graph = kpi_graph.compile_graph(all_contracts)
     con = duckdb.connect(settings.duckdb_path, read_only=False)
+    # DuckDB's default multi-threaded aggregation can sum the same rows in a
+    # different order across process launches, producing float results that
+    # agree to ~10 significant digits but not bit-for-bit (e.g.
+    # -3499600.0126327574 vs ...593). Invisible at the 2-decimal precision
+    # the scorecard reports, but it broke the replay cache: two runs of "the
+    # same" scenario hashed to two different cache keys. Single-threaded
+    # execution makes the reduction order - and therefore the exact float -
+    # reproducible run to run, which is what "make reproduce" actually
+    # promises. Meridian is small enough (~1.2M orders) that this costs
+    # negligible wall-clock time.
+    con.execute("PRAGMA threads=1")
     _CACHE.update({"contracts": all_contracts, "catalogue": catalogue, "graph": graph, "con": con})
     return _CACHE
 
@@ -363,10 +375,16 @@ def _assemble_abstention(ctx: dict[str, Any]) -> dict[str, Any]:
 
     # outcome.abstention carries plain strings, not tiered claims (the schema
     # has no tier field here - abstention IS the tier, in effect: UNKNOWN).
-    # The narrator's job is to turn the templated statement into
-    # persona-appropriate prose; its headline replaces `statement` verbatim
-    # since every numeral in it is already validated against outcome_draft.
-    outcome_draft["abstention"]["statement"] = ctx["narration"]["headline"]
+    # The narrator's job is to turn the templated statement into persona-
+    # appropriate prose; join headline + sentences into one statement (the
+    # schema gives abstention a single string field, not a sentence array)
+    # so the ruled-out and referral content the narrator was explicitly
+    # instructed to include (narrate.md rule 5) doesn't get silently dropped
+    # down to just the headline. Every numeral in all of it is already
+    # validated against outcome_draft.
+    narration = ctx["narration"]
+    statement_parts = [narration["headline"]] + [s["text"] for s in narration.get("sentences", [])[1:]]
+    outcome_draft["abstention"]["statement"] = " ".join(statement_parts)
 
     base = _base_findings(ctx)
     base["movement"] = movement
@@ -379,9 +397,19 @@ def _assemble_abstention(ctx: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
+_DRIVER_INDEX_RE = re.compile(r"^drivers\[(\d+)\]")
+
+
 def _resolve_tier(tier_from: str, drivers: list[dict[str, Any]], top_tier: str) -> str:
-    if tier_from.startswith("drivers[") and tier_from.endswith("]"):
-        idx = int(tier_from[len("drivers[") : -1])
+    """`tier_from` is model-authored (narrate.md asks for pointers like
+    'drivers[0]'), so it is untrusted input, not a value the pipeline
+    controls the exact shape of - a live model may reasonably write
+    'drivers[0].tests[0]' or similar to point at a specific test rather than
+    the driver as a whole. Only the leading 'drivers[N]' is meaningful for
+    tier lookup; anything else after it is ignored rather than rejected."""
+    m = _DRIVER_INDEX_RE.match(tier_from)
+    if m:
+        idx = int(m.group(1))
         if 0 <= idx < len(drivers):
             return drivers[idx]["tier"]
     return top_tier

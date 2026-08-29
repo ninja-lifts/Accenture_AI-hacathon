@@ -6,7 +6,7 @@ The brief asks for this table explicitly. Fill the status column as you go.
 |---|---|---|---|
 | Storage / query | **Native** | DuckDB embedded | Zero provisioning, nothing to be down during judging. Swaps to Snowflake/Databricks behind one adapter file |
 | Dataframes / stats | **Native** | pandas, numpy, scipy, statsmodels | Standard, boring, correct |
-| Seasonality | **Configured** | STL from statsmodels, per-KPI parameters in the contract | Configuration lives in the contract, not the code |
+| Seasonality | **Custom** | dow x month x festival_calendar decomposition, per-KPI parameters in the contract | Same idea as STL (learn seasonality from history, hold it against the focal window) without statsmodels.STL's 2-full-cycle data requirement — Meridian has ~16 months, not 24+. Reasoning in `engine/stages/s02_detect.py`'s docstring |
 | Attribution search | **Custom** | Ours | This is the differentiated part. Benchmarked against 7 published algorithms |
 | Falsification | **Custom** | Ours | Nothing off the shelf does this for business KPIs |
 | Confidence tiers | **Custom** | Ours | The product. Rule-assigned, never learned |

@@ -183,6 +183,140 @@ software does not work that way and every judge knows it.
 
 ---
 
+## 007 — An independent audit found gaps the build session didn't: no schema
+## test, SC-09 unpassable by construction, a fabricated baseline quote
+**Date:** 2026-08-29 · **Phase:** 6→7 · **Commit:** (this session, pre-freeze)
+
+- **Evidence:** A second pass over the repo, done deliberately as an
+  adversarial audit rather than a continuation of the build, found: (1)
+  Gate 4's "schema-valid findings" claim was only ever checked by hand in a
+  terminal, never as a committed test; (2) `score_scenario`'s pass condition
+  required an exact `true_segment` match for every planted `answer`
+  scenario, but SC-09 has no `true_segment` by design (a business-wide
+  definition-drift cause) — making it mathematically unpassable regardless
+  of engine quality; (3) README.md's SC-08 section quoted an invented
+  single-prompt B3 response ("Revenue fell 7.3%, primarily driven by...") as
+  if it were real recorded output, left over from the starter template and
+  never replaced.
+- **Problem:** (1) and (2) are real correctness/methodology gaps. (3) is the
+  most serious: fabricated evidence, sitting in the one section of the repo
+  built specifically to demonstrate the product does *not* fabricate.
+- **Decision:** Fix all three for real rather than patch around them: add
+  the missing test, fix the scoring bug (not lower the bar — the bug made a
+  legitimately-answered scenario score as a miss for a reason unrelated to
+  the engine), and replace the fabricated quote with GlassBox's actual
+  measured SC-08 output plus an honest "B3 not yet run" statement.
+- **Change:** `tests/test_findings_schema_valid.py` (new), `eval/harness.py`
+  (`score_scenario`'s pass criterion), `README.md`, `JUDGES.md` (also fixed:
+  a stale claim that SC-12 "degrades to CORRELATED" when it actually
+  abstains in the current build), `REPRODUCE.md` (real measured numbers in
+  place of template placeholders), `TRAJECTORIES.md` (written from real
+  captured runs, replacing 100% template content).
+- **Result:** 7/17 exact pass (was 6 — the SC-09 fix, not new tuning). Zero
+  fabricated content remaining in judge-facing docs, verified by grepping
+  for the removed quote and re-reading every `⟪FILL⟫` site.
+
+## 008 — Groq adapter added; B1 and B3 baselines run for real
+**Date:** 2026-08-29 · **Phase:** 6 · **Commit:** (this session, pre-freeze)
+
+- **Evidence:** `engine/llm_client.py` only implemented an Anthropic
+  adapter; no live key was available for it. A Groq key was.
+- **Problem:** Without a live model call, B3 (the highest-value baseline —
+  same data, one prompt, no pipeline) could only ever be "not yet run,"
+  and the SC-08 comparison — arguably the single strongest piece of
+  evidence available — stayed hypothetical.
+- **Decision:** Add a second provider adapter (`_call_live_openai_compatible`,
+  Groq's OpenAI-compatible chat-completions API) behind the same
+  `engine/llm_client.py` boundary, proving the "provider is config, not
+  code" claim with a second working example rather than just the one
+  adapter it shipped with. Build B1 for real (no external dependency,
+  should have existed already). Run B3 live rather than fake it.
+- **Change:** `engine/llm_client.py` (Groq adapter, 429 retry-with-backoff,
+  a discovered Cloudflare-vs-default-urllib-User-Agent 403 fixed with a
+  browser UA string), `eval/baselines/b1_naive.py` (new), `eval/baselines/run_all.py`
+  (new; B3's prompt payload is built from real retrieval calls, independent
+  of whether GlassBox's own gate went on to answer or abstain, so an
+  abstention doesn't quietly starve B3 of evidence GlassBox actually saw).
+- **Result:** B1: 2/17 exact segment match, asserts a cause on **3/3**
+  scenarios where none was planted. B3 (live, `openai/gpt-oss-120b` via
+  Groq): run on 16/17, asserts a cause without hedging on 2/3. On SC-08
+  specifically, B3 produced a fluent, 70-80%-confident, fabricated cause
+  citing a real document from a *different* scenario (TCK-6666) — quoted
+  verbatim in `eval/baseline_scorecard.md`, not paraphrased. GlassBox's rate
+  on the same three scenarios: 0/3.
+
+## 009 — Live narration surfaced two real validator gaps and one thin prompt
+**Date:** 2026-08-29 · **Phase:** 5 · **Commit:** (this session, pre-freeze)
+
+- **Evidence:** First live run of `s07_narrate` (via Groq) failed
+  validation twice, then fell back to the template — not a crash, but a
+  silent quality regression nobody would have noticed without checking
+  `telemetry.validator_retries`.
+- **Problem:** Two real gaps in `engine/validator.py`, both confirmed by
+  inspecting the actual rejected output: (1) `extract_numerals` didn't
+  recognise "M"/"million" as a magnitude suffix, so "≈-1.29M" extracted as
+  the unaccounted numeral `1.29`; (2) `_collect_findings_numbers` only
+  walked literal JSON number values, so a numeral the model faithfully
+  quoted *from a string field* (e.g. `rejected_hypotheses[].detail`:
+  "treated moved -9.2% vs control 0.0%") was never in the allowed set,
+  because that number only exists inside a text field, not as a JSON
+  number. Separately: `openai/gpt-oss-120b` is a reasoning model that
+  spends part of its token budget on an internal `reasoning` field before
+  the visible answer — under-budgeted `max_output_tokens` produced an
+  empty final generation, which Groq's JSON-mode validator rejects with a
+  400 rather than returning partial content. And once validation passed,
+  the model quoted every number unrounded ("-23.51725190215333%"),
+  technically valid but unreadable.
+- **Decision:** Fix the validator gaps for real (they'd misfire against any
+  provider's output, not just Groq's) rather than route around them.
+  Give reasoning-style models a generous token ceiling rather than the
+  prompt's declared budget. Tighten `prompts/narrate.md` to require
+  human-scale rounding, since the validator already accepts a rounded
+  figure as a match within ~2% - rounding was never a validation risk, the
+  prompt just didn't ask for it.
+- **Change:** `engine/validator.py` (`_MULTIPLIERS`, string-aware
+  `_collect_findings_numbers`), `engine/llm_client.py` (reasoning-model
+  token bump), `prompts/narrate.md` (v1.0.0 → v1.1.0, rounding rule),
+  `engine/pipeline.py` (`_assemble_abstention` was also only keeping the
+  narrator's headline and silently dropping the ruled-out/referral
+  sentences it was instructed to write — now joins the full narration).
+- **Result:** SC-01 and SC-08 narrate live on the first attempt, 0 validator
+  retries, real natural-language output captured and quoted in this
+  changelog and `TRAJECTORIES.md`. *(That specific cache entry did not
+  survive to be committed — the determinism fix in entry 010's companion
+  change invalidated its key, and this session couldn't reliably
+  regenerate it afterward against a live API that started hanging for
+  unexplained periods. The quotes are real; the offline-replay artifact
+  of them is not currently in the repo. See `CHECKLIST.md`.)*
+
+## 010 — `pytest` failed after a live batch run populated more of the replay cache: `_resolve_tier` couldn't parse a model-authored pointer it hadn't seen
+**Date:** 2026-08-29 · **Phase:** 5 · **Commit:** (this session, pre-freeze)
+
+- **Evidence:** Ran the harness live across more scenarios to broaden replay-
+  cache coverage beyond SC-01/SC-08 (interrupted partway by rate limits, but
+  it had already cached ~11 more real responses). `pytest` immediately
+  after: `ValueError: invalid literal for int() with base 10: '0].tests[0'`
+  in `engine/pipeline.py::_resolve_tier`, triggered by a cached SC-11
+  response.
+- **Problem:** `_resolve_tier` assumed every `tier_from` string a narrator
+  writes exactly matches `drivers[N]` and nothing else, then did
+  `int(tier_from[len("drivers["):-1])` on it - a live model is free to write
+  a more specific pointer like `drivers[0].tests[0]` (reasonably, since it's
+  pointing at a specific test's result, not just the driver), and the exact-
+  match assumption crashed the whole pipeline run on perfectly sensible
+  model output. `tier_from` is untrusted, model-authored input; the code was
+  treating it as a value the pipeline controls the shape of.
+- **Decision:** Parse only the meaningful leading `drivers[N]` prefix with a
+  regex and ignore anything after it, rather than require an exact match.
+- **Change:** `engine/pipeline.py::_resolve_tier`.
+- **Result:** `pytest` green again (8/8), including against the now-broader
+  live replay cache. Found by running the actual test suite against real
+  model output, not by anticipating the failure mode in advance - exactly
+  why this project treats "run it for real" as part of the process, not a
+  formality after the code is believed finished.
+
+---
+
 <!--
 Entries to expect. Do not pre-write them — this list is only here so the shape is
 familiar when the moment arrives, and roughly half of these will turn out to be

@@ -1,6 +1,6 @@
 ---
 prompt_id: narrate
-version: 1.0.0
+version: 1.1.0
 stage: "07_narrate"
 temperature: 0.2
 max_output_tokens: 900
@@ -20,10 +20,16 @@ check anything. If it is not in the findings object, it does not exist.
 ## Hard rules
 
 1. **Numbers.** Every numeral you write must appear in the findings object. You
-   may round a supplied number and say so; you may not compute a new one, not
-   even a difference or a percentage of a percentage. A downstream validator
-   re-extracts every numeral from your output and rejects the whole generation
-   if one is unaccounted for.
+   may not compute a new one, not even a difference or a percentage of a
+   percentage. A downstream validator re-extracts every numeral from your
+   output and rejects the whole generation if one is unaccounted for.
+   **Round for a human reader** unless the field is naturally a whole number:
+   percentages to one decimal place (`-23.5%`, not `-23.51725190215333%`)
+   and currency to a sensible unit (`Rs 34,99,600` or `Rs 35 lakh`, not
+   `Rs -3499600.0126327574`). The validator accepts a rounded figure as a
+   match for its unrounded source (within ~2%), so rounding never risks
+   rejection - an unrounded figure copied verbatim is not more accurate,
+   it is only harder to read.
 2. **Tiers.** Each sentence you produce is returned with the tier of the
    evidence it rests on, copied from the findings object. You never choose,
    upgrade or soften a tier. Do not describe a `CORRELATED` driver in causal
