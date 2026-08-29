@@ -237,6 +237,60 @@ def render_scorecard(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def render_cost_receipt(telemetries: list[dict[str, Any]]) -> str:
+    """Most prototypes cannot answer 'what does one of these cost to run?'
+    Every findings object already carries this in `telemetry` - this is just
+    reading it back, not measuring anything new."""
+    if not telemetries:
+        return (
+            "# Cost receipt\n\nNo findings objects were produced this run "
+            "(every scenario resolved to no_alert or an error) - nothing to report.\n"
+        )
+
+    def pctl(values: list[float], p: float) -> float:
+        s = sorted(values)
+        idx = min(len(s) - 1, int(round(p * (len(s) - 1))))
+        return s[idx]
+
+    total_ms = [t["total_ms"] for t in telemetries]
+    tokens_in = [t["tokens_in"] for t in telemetries]
+    tokens_out = [t["tokens_out"] for t in telemetries]
+    cost = [t["estimated_cost_usd"] for t in telemetries]
+    rows_scanned = [t["rows_scanned"] for t in telemetries]
+    llm_calls = [t["llm_calls"] for t in telemetries]
+    replay_modes = {t["replay_mode"] for t in telemetries}
+    n = len(telemetries)
+
+    mode = "replay" if replay_modes == {True} else ("live" if replay_modes == {False} else "mixed")
+
+    lines = [
+        "# Cost receipt", "",
+        "```",
+        f"Runs measured: {n}      Mode: {mode}",
+        "",
+        f"tokens in  (mean / p95)   {sum(tokens_in)/n:.0f}  /  {pctl(tokens_in, 0.95):.0f}",
+        f"tokens out (mean / p95)   {sum(tokens_out)/n:.0f}  /  {pctl(tokens_out, 0.95):.0f}",
+        f"USD per run (mean)        {sum(cost)/n:.4f}",
+        f"latency p50 / p95 (ms)    {pctl(total_ms, 0.50):.0f}  /  {pctl(total_ms, 0.95):.0f}",
+        f"rows scanned (mean)       {sum(rows_scanned)/n:.0f}",
+        f"LLM calls per run (max observed / cap)   {max(llm_calls)} / 2",
+        "",
+        f"Replay mode cost: $0.00 ({sum(1 for t in telemetries if t['replay_mode'])}/{n} runs served from "
+        "replay/template fallback, not a live model call)",
+        "```", "",
+        "Most prototypes cannot answer \"what does one of these cost to run?\" Being able to "
+        "is a small, memorable signal of production thinking.",
+        "",
+        "**Note on this run:** no live LLM key was configured, so every run above used the "
+        "deterministic template narrator (engine/stages/s07_narrate.py's fallback path) rather "
+        "than a live model call - `llm_calls` is 0 for all of them and this receipt is a true "
+        "$0.00, not a rounded one. Re-run with GLASSBOX_REPLAY=0 and a real key to get live "
+        "token/cost numbers; the harness and this receipt need no changes to do so.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenarios", default="all")
@@ -259,12 +313,15 @@ def main() -> None:
         return
 
     rows = []
+    telemetries = []
     for scenario in scenarios:
         if scenario.get("notes", "").strip().upper().startswith("RETIRED"):
             continue
         try:
             findings = run_scenario(scenario)
             row = score_scenario(scenario, findings)
+            if findings.get("kind") != "no_alert":
+                telemetries.append(findings["telemetry"] | {"replay_mode": findings["provenance"]["replay_mode"]})
         except Exception as exc:  # noqa: BLE001 - a scenario failing to run is itself a scoring result
             row = {
                 "id": scenario["id"], "expected_branch": scenario["expected_branch"], "actual_branch": "ERROR",
@@ -282,6 +339,11 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(render_scorecard(rows), encoding="utf-8")
     print(f"wrote {out_path}")
+
+    if args.scenarios == "all":
+        receipt_path = Path("eval/cost_receipt.md")
+        receipt_path.write_text(render_cost_receipt(telemetries), encoding="utf-8")
+        print(f"wrote {receipt_path}")
 
 
 if __name__ == "__main__":

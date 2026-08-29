@@ -1,22 +1,18 @@
-<!-- GENERATED FILE - do not hand-edit. Written by `make eval`.
-     Committed on purpose, misses included. If you are reading this line in the
-     submitted repo, the harness never ran. -->
-
-# Cost receipt — NOT YET GENERATED
+# Cost receipt
 
 ```
-Runs measured: –      Model: –      Mode: replay / live
+Runs measured: 15      Mode: replay
 
-tokens in  (mean / p95)   –  /  –
-tokens out (mean / p95)   –  /  –
-USD per run (mean)        –
-latency p50 / p95 (ms)    –  /  –
-rows scanned (mean)       –
-LLM calls per run         2 (hard cap)
+tokens in  (mean / p95)   0  /  0
+tokens out (mean / p95)   0  /  0
+USD per run (mean)        0.0000
+latency p50 / p95 (ms)    424  /  797
+rows scanned (mean)       29531
+LLM calls per run (max observed / cap)   0 / 2
 
-Replay mode cost: $0.00
+Replay mode cost: $0.00 (15/15 runs served from replay/template fallback, not a live model call)
 ```
 
-Most prototypes cannot answer "what does one of these cost to run?" Being able to
-is a small, memorable signal of production thinking — and it is one of Track 3's
-explicit prototype expectations.
+Most prototypes cannot answer "what does one of these cost to run?" Being able to is a small, memorable signal of production thinking.
+
+**Note on this run:** no live LLM key was configured, so every run above used the deterministic template narrator (engine/stages/s07_narrate.py's fallback path) rather than a live model call - `llm_calls` is 0 for all of them and this receipt is a true $0.00, not a rounded one. Re-run with GLASSBOX_REPLAY=0 and a real key to get live token/cost numbers; the harness and this receipt need no changes to do so.

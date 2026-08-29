@@ -6,7 +6,7 @@
 help:
 	@echo "setup      - install dependencies"
 	@echo "data       - generate the Meridian dataset from the committed manifest"
-	@echo "eval       - run the 17-scenario harness, write eval/scorecard.md"
+	@echo "eval       - run the 17-scenario harness, write eval/scorecard.md and eval/cost_receipt.md"
 	@echo "baseline   - run B1/B2/B3 baselines, write eval/baseline_scorecard.md"
 	@echo "app        - launch the UI locally"
 	@echo "test       - unit tests"
