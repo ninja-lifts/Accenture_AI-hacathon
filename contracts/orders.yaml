@@ -13,12 +13,21 @@ definition:
   plain_english: >
     Count of distinct orders placed and not cancelled, at order-date grain.
   sql: |
-    -- TODO(Phase 2): the ONLY place this metric's arithmetic may live.
-    SELECT order_date AS ts, region, category, channel,
-           NULL AS value, NULL AS support_size
-    FROM meridian.fact_orders
-  includes: []
-  excludes: []
+    SELECT
+      order_date              AS ts,
+      region,
+      category,
+      channel,
+      COUNT(DISTINCT order_id) AS value,
+      COUNT(DISTINCT order_id) AS support_size
+    FROM fact_orders
+    WHERE order_status != 'cancelled'
+    GROUP BY 1, 2, 3, 4
+  includes:
+    - delivered orders
+    - shipped orders not yet delivered
+  excludes:
+    - cancelled orders
 
 grain: day
 
@@ -45,7 +54,7 @@ detection:
   seasonality: [dow, month, festival_calendar]
   min_history_periods: 90
   materiality:
-    min_abs_impact: 0
+    min_abs_impact: 50          # order count. See docs/adr/0006-detection-thresholds.md.
     min_z: 2.5
 
 drivers:

@@ -13,12 +13,23 @@ definition:
   plain_english: >
     Net revenue divided by orders, over the same window and segment.
   sql: |
-    -- TODO(Phase 2): the ONLY place this metric's arithmetic may live.
-    SELECT order_date AS ts, region, category, channel,
-           NULL AS value, NULL AS support_size
-    FROM meridian.fact_orders
-  includes: []
-  excludes: []
+    SELECT
+      order_date AS ts,
+      region,
+      category,
+      channel,
+      SUM(gross_item_value - discount_value - return_value)
+        / NULLIF(COUNT(DISTINCT order_id), 0)   AS value,
+      COUNT(DISTINCT order_id)                  AS support_size
+    FROM fact_orders
+    WHERE order_status IN ('delivered', 'shipped')
+      AND is_internal_transfer = FALSE
+    GROUP BY 1, 2, 3, 4
+  includes:
+    - delivered orders
+    - shipped orders not yet delivered
+  excludes:
+    - cancelled orders
 
 grain: day
 
@@ -45,7 +56,7 @@ detection:
   seasonality: [dow, month, festival_calendar]
   min_history_periods: 90
   materiality:
-    min_abs_impact: 0
+    min_abs_impact: 100         # INR. See docs/adr/0006-detection-thresholds.md.
     min_z: 2.5
 
 drivers:

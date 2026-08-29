@@ -13,12 +13,22 @@ definition:
   plain_english: >
     Share of delivered orders arriving on or before the promised date.
   sql: |
-    -- TODO(Phase 2): the ONLY place this metric's arithmetic may live.
-    SELECT order_date AS ts, region, category, channel,
-           NULL AS value, NULL AS support_size
-    FROM meridian.fact_orders
-  includes: []
-  excludes: []
+    SELECT
+      order_date AS ts,
+      region,
+      category,
+      channel,
+      CAST(SUM(CASE WHEN on_time THEN 1 ELSE 0 END) AS DOUBLE)
+        / NULLIF(COUNT(*), 0)   AS value,
+      COUNT(*)                  AS support_size
+    FROM fact_orders
+    WHERE order_status = 'delivered'
+    GROUP BY 1, 2, 3, 4
+  includes:
+    - delivered orders
+  excludes:
+    - shipped but not yet delivered orders
+    - cancelled orders
 
 grain: day
 
@@ -45,7 +55,7 @@ detection:
   seasonality: [dow, month, festival_calendar]
   min_history_periods: 90
   materiality:
-    min_abs_impact: 0
+    min_abs_impact: 0.03        # ratio points. See docs/adr/0006-detection-thresholds.md.
     min_z: 2.5
 
 drivers:

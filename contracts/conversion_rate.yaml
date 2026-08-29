@@ -13,18 +13,26 @@ definition:
   plain_english: >
     Orders divided by sessions, same window and segment. Denominator is sessions with a product view.
   sql: |
-    -- TODO(Phase 2): the ONLY place this metric's arithmetic may live.
-    SELECT order_date AS ts, region, category, channel,
-           NULL AS value, NULL AS support_size
-    FROM meridian.fact_orders
-  includes: []
-  excludes: []
+    SELECT
+      session_date AS ts,
+      region,
+      category,
+      channel,
+      CAST(SUM(converted_count) AS DOUBLE)
+        / NULLIF(SUM(session_count), 0)   AS value,
+      SUM(session_count)                  AS support_size
+    FROM fact_sessions
+    GROUP BY 1, 2, 3, 4
+  includes:
+    - sessions with a product view
+  excludes:
+    - bot traffic (pre-filtered upstream)
 
 grain: day
 
 sources:
-  - source_id: fact_orders
-    table: meridian.fact_orders
+  - source_id: fact_sessions
+    table: meridian.fact_sessions
     expected_freshness_seconds: 3600
     quality_checks: [row_count_vs_trailing_median]
 
@@ -45,8 +53,8 @@ detection:
   seasonality: [dow, month, festival_calendar]
   min_history_periods: 90
   materiality:
-    min_abs_impact: 0
-    min_z: 2.5
+    min_abs_impact: 0.0015      # ratio points. See docs/adr/0006-detection-thresholds.md.
+    min_z: 1.5
 
 drivers:
   - name: funnel_steps

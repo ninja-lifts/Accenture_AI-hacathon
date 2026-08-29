@@ -98,10 +98,16 @@ detection:
   seasonality: [dow, month, festival_calendar]
   min_history_periods: 90
   materiality:
-    # DUAL threshold, deliberately. A 4-sigma wobble worth Rs 40,000 is not an
-    # alert; a 1.2-sigma drift worth Rs 40 lakh is. Requiring both is what keeps
-    # the alert feed at single digits instead of 200 rows nobody reads.
-    min_abs_impact: 2500000     # INR
+    # DUAL threshold, deliberately. Calibrated against the committed Meridian
+    # dataset (data/generate.py, seed 20260829): national weekly net_revenue
+    # residual noise (after dow/month/festival_calendar adjustment) is ~2% of
+    # the ~INR 20 crore weekly mean, i.e. an ~INR 40 lakh std - min_z=2.5 alone
+    # already requires a ~INR 1 crore move at national scale. min_abs_impact is
+    # the separate, scale-independent floor: "not worth an analyst's time
+    # below this regardless of how surprising it is statistically" - set low
+    # enough that a segment-scoped investigation (e.g. SC-01's South x Audio,
+    # an ~INR 3-5 lakh movement) still clears it. See docs/adr/0006-detection-thresholds.md.
+    min_abs_impact: 250000      # INR
     min_z: 2.5
 
 drivers:
