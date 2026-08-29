@@ -262,6 +262,46 @@ def render_cost_receipt(telemetries: list[dict[str, Any]]) -> str:
     n = len(telemetries)
 
     mode = "replay" if replay_modes == {True} else ("live" if replay_modes == {False} else "mixed")
+    replay_run_count = sum(1 for t in telemetries if t["replay_mode"])
+    any_calls = max(llm_calls) > 0
+
+    # This note is generated from the same telemetry as the table above it
+    # rather than a static string, on purpose: a receipt whose prose
+    # contradicts its own numbers (e.g. claiming "llm_calls is 0" while the
+    # table shows a nonzero call count from a still-populated replay cache)
+    # is exactly the kind of self-undermining claim this project's honesty
+    # standard exists to prevent.
+    if mode == "replay" and not any_calls:
+        note = (
+            "**Note on this run:** no live LLM key was configured, and no replay-cache entry "
+            "matched, so every run above used the deterministic template narrator "
+            "(engine/stages/s07_narrate.py's fallback path) rather than a live model call - "
+            "`llm_calls` is 0 for all of them and this receipt is a true $0.00, not a rounded "
+            "one. Re-run with GLASSBOX_REPLAY=0 and a real key to get live token/cost numbers; "
+            "the harness and this receipt need no changes to do so."
+        )
+    elif mode == "replay" and any_calls:
+        calls_from_cache = sum(1 for t in telemetries if t["llm_calls"] > 0)
+        note = (
+            f"**Note on this run:** replay mode throughout (no live key configured this run), "
+            f"but {calls_from_cache}/{n} run(s) matched a populated entry in eval/replay_cache/ "
+            "and read a previously-captured model response instead of falling back to the "
+            "template narrator - that is where the nonzero token/latency numbers above come "
+            "from. USD cost is still $0.00 because a cache read makes no API call; those tokens "
+            "were paid for once, when the cache entry was originally recorded live."
+        )
+    elif mode == "live":
+        note = (
+            "**Note on this run:** ran with a live LLM key (GLASSBOX_REPLAY=0) - every number "
+            "above is a real measurement from actual API calls, not a replay-cache read."
+        )
+    else:
+        note = (
+            f"**Note on this run:** mixed - {replay_run_count}/{n} scenarios ran in replay mode "
+            f"(cache read or template fallback) and {n - replay_run_count}/{n} made live calls; "
+            "the aggregates above blend both, so read USD per run and latency as an average "
+            "across two different cost regimes, not a single one."
+        )
 
     lines = [
         "# Cost receipt", "",
@@ -275,17 +315,13 @@ def render_cost_receipt(telemetries: list[dict[str, Any]]) -> str:
         f"rows scanned (mean)       {sum(rows_scanned)/n:.0f}",
         f"LLM calls per run (max observed / cap)   {max(llm_calls)} / 2",
         "",
-        f"Replay mode cost: $0.00 ({sum(1 for t in telemetries if t['replay_mode'])}/{n} runs served from "
+        f"Replay mode cost: $0.00 ({replay_run_count}/{n} runs served from "
         "replay/template fallback, not a live model call)",
         "```", "",
         "Most prototypes cannot answer \"what does one of these cost to run?\" Being able to "
         "is a small, memorable signal of production thinking.",
         "",
-        "**Note on this run:** no live LLM key was configured, so every run above used the "
-        "deterministic template narrator (engine/stages/s07_narrate.py's fallback path) rather "
-        "than a live model call - `llm_calls` is 0 for all of them and this receipt is a true "
-        "$0.00, not a rounded one. Re-run with GLASSBOX_REPLAY=0 and a real key to get live "
-        "token/cost numbers; the harness and this receipt need no changes to do so.",
+        note,
         "",
     ]
     return "\n".join(lines)

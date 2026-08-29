@@ -67,6 +67,45 @@ def _code_version() -> str:
         return "unknown"
 
 
+_TRACE_KEYS = {
+    "s00_intent": ["route", "kpi_id", "segment", "window", "clarification"],
+    "s01_define": ["data_quality_failure", "data_quality_reason", "sources", "entitlement", "series"],
+    "s02_detect": ["history_periods_ok", "movement"],
+    "s03_localize": ["localization"],
+    "s04_decompose": ["decomposition"],
+    "s05_retrieve": ["evidence"],
+    "s06_falsify": ["candidates", "rejected_hypotheses"],
+}
+
+
+def _snapshot(ctx: dict[str, Any], stage: str) -> None:
+    """Record what a stage actually put on the context, for --trace. Reads
+    ctx after the stage already ran; never influences pipeline behaviour -
+    deleting this function changes no findings output, only whether a trace
+    is available to inspect one."""
+    if ctx.get("_trace") is None:
+        return
+    keys = _TRACE_KEYS.get(stage, [])
+    snapshot = {}
+    for k in keys:
+        if k not in ctx:
+            continue
+        v = ctx[k]
+        if k == "evidence" and isinstance(v, list):
+            snapshot[k] = [
+                {kk: e.get(kk) for kk in ("document_id", "source", "retrieval_score", "flagged_injection")}
+                for e in v
+            ]
+        elif k == "series":
+            # A DataFrame isn't JSON-serialisable and a full history dump
+            # would dwarf everything else in the trace - the row count is
+            # the number a reader of a trace actually wants here.
+            snapshot[k] = {"row_count": int(len(v))} if v is not None else None
+        else:
+            snapshot[k] = v
+    ctx["_trace"].append({"stage": stage, "ctx": snapshot})
+
+
 def _default_window(today: dt.date) -> dict[str, str]:
     last_sunday = today - dt.timedelta(days=today.weekday() + 1)
     focal_end = last_sunday
@@ -91,12 +130,19 @@ def run(
     role_id: str | None = None,
     today: dt.date | None = None,
     investigate: bool = False,
-) -> dict[str, Any]:
+    trace: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], list[dict[str, Any]]]:
     """Execute the pipeline. Returns either a findings object (schema-valid)
     or, for an alert_sweep that does not escalate, a small alert-feed row
     dict with `kind: 'no_alert'` - the latter is intentionally NOT validated
     against findings.schema.json, because it never became one (see module
-    docstring)."""
+    docstring).
+
+    trace=True changes the return to (result, trace_log): a list of
+    {"stage": str, "ctx": {...}} snapshots, one per stage that actually ran,
+    for `python -m eval.trace`. Every existing caller passes trace=False (the
+    default) and gets the exact same single-value return as before - this is
+    additive, not a behaviour change."""
     settings = config.load()
     env = _setup(settings)
     today = today or dt.date.today()
@@ -123,27 +169,34 @@ def run(
         "telemetry": {"stage_timings_ms": {}, "llm_calls": 0, "tokens_in": 0, "tokens_out": 0,
                        "estimated_cost_usd": 0.0, "rows_scanned": 0, "validator_retries": 0},
         "security": {"cells_suppressed": 0, "documents_withheld": 0, "redactions_applied": 0, "injection_flags": []},
+        "_trace": [] if trace else None,
     }
 
+    def _done(result: dict[str, Any]) -> Any:
+        return (result, ctx["_trace"]) if trace else result
+
     s00_intent.run(ctx)
+    _snapshot(ctx, "s00_intent")
 
     if ctx["route"] == "clarification":
         findings = _assemble_clarification(ctx)
         audit.write(findings)
-        return findings
+        return _done(findings)
 
     if ctx["kpi_id"] is None:
         raise ValueError("kpi is required (directly, or resolved by Stage 00 from a question)")
     ctx["window"] = ctx["window"] or _default_window(today)
 
     s01_define.run(ctx)
+    _snapshot(ctx, "s01_define")
     s02_detect.run(ctx)
+    _snapshot(ctx, "s02_detect")
 
     if trigger == "alert_sweep" and not investigate:
         mat = ctx["movement"]["materiality"]
         escalate = mat["statistically_surprising"] and mat["materially_large"] and not mat["suppressed_by_registry"]
         if not escalate:
-            return {
+            return _done({
                 "kind": "no_alert",
                 "kpi": ctx["kpi_id"],
                 "segment": ctx["segment"],
@@ -151,12 +204,16 @@ def run(
                 "movement": ctx["movement"],
                 "explained_planned": mat["suppressed_by_registry"],
                 "registry_entry_id": mat["registry_entry_id"],
-            }
+            })
 
     s03_localize.run(ctx)
+    _snapshot(ctx, "s03_localize")
     s04_decompose.run(ctx)
+    _snapshot(ctx, "s04_decompose")
     s05_retrieve.run(ctx)
+    _snapshot(ctx, "s05_retrieve")
     s06_falsify.run(ctx)
+    _snapshot(ctx, "s06_falsify")
 
     branch = gate.decide(ctx)
     ctx["branch"] = branch
@@ -165,9 +222,11 @@ def run(
         findings = _assemble_abstention(ctx)
     else:
         findings = _assemble_answer(ctx)
+    if ctx["_trace"] is not None:
+        ctx["_trace"].append({"stage": "s07_narrate", "ctx": {"branch": branch, "outcome": findings["outcome"]}})
 
     audit.write(findings)
-    return findings
+    return _done(findings)
 
 
 # ============================================================== assembly ===

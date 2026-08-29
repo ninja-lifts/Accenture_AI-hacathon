@@ -317,6 +317,95 @@ software does not work that way and every judge knows it.
 
 ---
 
+## 011 — A deep post-submission-readiness audit found the docs had drifted from the code, and the cost receipt could contradict itself
+**Date:** 2026-08-30 · **Phase:** 7 · **Commit:** (this session, pre-freeze)
+
+- **Evidence:** Re-ran `make eval`/`make baseline` in a clean shell (no key)
+  and diffed against the committed files to check the reproducibility claim
+  was still true. `eval/scorecard.md` matched byte-for-byte except the
+  commit-hash header — good. But `eval/cost_receipt.md`'s table showed
+  `LLM calls per run (max observed / cap) 1 / 2` with real nonzero token and
+  latency numbers, while the prose directly below it unconditionally read
+  "no live LLM key was configured... `llm_calls` is 0 for all of them" -
+  the file contradicted itself. Separately, grepping README.md and
+  JUDGES.md against the actual repo state found both still saying
+  "the UI isn't built," "B3 hasn't been run," and "only one provider
+  adapter is implemented" - all three false as of commit `9ca7502`
+  (Groq adapter, live B3 run, and `app/main.py` all landed last session,
+  but the judge-facing docs were never updated to match).
+- **Problem:** two different kinds of drift. (1) `render_cost_receipt` in
+  `eval/harness.py` had a hardcoded prose string written for the common
+  no-key case, never made conditional on the actual telemetry - true only
+  by accident once the replay cache was empty, and silently false the
+  moment any run's `llm_calls` count is nonzero (a populated cache, or a
+  live key). (2) Nothing enforces that judge-facing prose docs track the
+  code/eval state they describe - CHECKLIST/CHANGELOG were kept current
+  through this project's process, but README.md and JUDGES.md are prose
+  written once and not part of that loop, so they went stale the moment
+  real work outpaced them.
+- **Decision:** Fix (1) as a real bug - a receipt whose numbers and prose
+  disagree is exactly the kind of self-undermining claim this project
+  exists to avoid, and it isn't a scored metric so nothing in the "don't
+  tune to improve scores" rule is in tension with fixing it. Fix (2) by
+  rewriting the specific stale passages (not a wholesale rewrite) with
+  facts re-verified against the current repo, not memory. Also used
+  Streamlit's `AppTest` harness to actually exercise `app/main.py` -
+  select each scenario, click Run, switch every persona - since the Chrome
+  browser tool still won't connect (three failed attempts across two
+  sessions) and "syntax-checked only" was a real, named gap.
+- **Change:** `eval/harness.py::render_cost_receipt` (note text now
+  branches on `mode` and whether any run made a call, instead of a static
+  string); `README.md` (UI status, the B3/SC-08 comparison, provider
+  adapter count, `make app` status, file tree); `JUDGES.md` (status banner,
+  the "what we'd push on" section, changelog entry count); `REPRODUCE.md`
+  (baselines and app sections rewritten from "not yet built" to real,
+  measured steps, plus a new troubleshooting row for the DuckDB
+  single-writer lock hit directly this session when a backgrounded
+  `streamlit run` held the file open during `pytest`); `CHECKLIST.md`
+  (Phase 5 rows updated to cite the `AppTest` verification).
+- **Result:** `eval/cost_receipt.md` regenerated clean (0 calls, table and
+  prose agree) - `pytest` still 8/8, `eval/scorecard.md` still byte-identical
+  to the pre-audit version except the header. `AppTest` result: all 17
+  scenarios and all 3 persona overrides run through the real UI with zero
+  exceptions - real functional verification, though the visual layout is
+  still unconfirmed in an actual browser. No engine, contract, or manifest
+  file touched.
+
+---
+
+## 012 — Built the `--trace` flag the master build flow scoped but the build session skipped
+**Date:** 2026-08-30 · **Phase:** 4 · **Commit:** (this session, pre-freeze)
+
+- **Evidence:** `docs/01_MASTER_BUILD_FLOW.md` line 163 specs a `--trace` flag
+  "feeds TRAJECTORIES.md; build it now, it costs an hour here and a day
+  later" - never built. `TRAJECTORIES.md` itself admits its SC-01/SC-08/
+  SC-14 sections were captured by hand, "instrumenting the stage functions
+  directly in a Python shell," which is exactly the manual process the flag
+  was meant to replace.
+- **Problem:** no way to inspect a scenario's real stage-by-stage output
+  without either reading `eval/scorecard.md`'s final row or writing a
+  one-off Python shell session per scenario, as `JUDGES.md`'s 15-minute path
+  currently asks a judge to do for the persona/entitlements check.
+- **Decision:** add it as a strictly additive capability rather than change
+  `pipeline.run`'s existing contract - a `trace: bool = False` parameter
+  that, only when explicitly set, switches the return from `findings` to
+  `(findings, trace_log)`. Every existing call site (the harness, the app,
+  all three protected tests) passes no `trace` argument and is provably
+  unaffected: reran the full suite and diffed a regenerated
+  `eval/scorecard.md` against the pre-change version - byte-identical.
+- **Change:** `engine/pipeline.py` (`_snapshot`/`_TRACE_KEYS`, the `trace`
+  parameter, a snapshot call after each stage); new `eval/trace.py`
+  (`python -m eval.trace SC-01` writes `eval/traces/SC-01.md`).
+- **Result:** generated real traces for one scenario of each branch type
+  (SC-01 answer, SC-08 abstention, SC-02 no_alert, SC-17 clarification) -
+  all four ran clean. SC-01's trace surfaces the entitlement predicate and
+  `entitlements_hash` Stage 01 actually computed
+  (`category IN (SELECT category FROM role_scope WHERE role_id = 'cm_audio')`),
+  the same access-control evidence `JUDGES.md` item 8 asks a judge to
+  reproduce by hand - now one command. `pytest` 8/8, scorecard unchanged.
+
+---
+
 <!--
 Entries to expect. Do not pre-write them — this list is only here so the shape is
 familiar when the moment arrives, and roughly half of these will turn out to be

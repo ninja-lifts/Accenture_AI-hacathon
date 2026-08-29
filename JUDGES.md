@@ -3,11 +3,14 @@
 Thank you for the time. Here is the shortest path to a fair assessment.
 
 **Status check first, because it matters for how you read this:** the engine,
-data generator, and evaluation harness are real, tested, and reproducible. The
-UI is not built yet — there is no live demo. Everything below points at the
-repo itself (code, committed output, tests you can run) rather than a hosted
-page, because that's what actually exists right now. We would rather you know
-that up front than discover it by clicking a dead link.
+data generator, and evaluation harness are real, tested, and reproducible. A
+minimal UI exists (`app/main.py` — `make app`) and is verified to run every
+scenario without error, but no one has clicked through it in a browser yet,
+so we can't vouch for the visual polish, only the logic. There is no hosted
+page — everything below points at the repo itself (code, committed output,
+tests you can run) rather than a link, because that's what actually exists
+right now. We would rather you know that up front than discover it by
+clicking a dead link.
 
 ---
 
@@ -37,10 +40,13 @@ If you only do one of these, do **step 2**.
 
 Add:
 
-4. [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) — a real,
-   run-not-invented B1 (naive drill-down) baseline. It asserts a confident
-   cause on **all 3** of the scenarios where none was planted. GlassBox's
-   rate on the same three: zero.
+4. [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) — two real,
+   run-not-invented baselines. B1 (naive drill-down) asserts a confident
+   cause on **all 3** of the scenarios where none was planted. B3
+   (single-LLM-prompt, live via Groq's `openai/gpt-oss-120b`) does the same
+   on the 2 of those 3 it was actually sent a prompt for, fluently, at
+   "70-80% confidence," citing a real ticket number that is a planted decoy.
+   GlassBox's rate on the same three: zero.
 5. [`TRAJECTORIES.md`](TRAJECTORIES.md) §1 — **SC-01**, the hero, all seven
    stages with real numbers: a courier-collapse cause found, and a genuinely
    confounding national promotion (real, well-timed, well-documented)
@@ -74,7 +80,10 @@ Add:
    ```
    The role changes the SQL predicate and the resulting `entitlements_hash` —
    this is real access control, not a UI filter, and you can verify it without
-   a UI at all.
+   a UI at all. Or skip the Python shell:
+   `python -m eval.trace SC-01` writes `eval/traces/SC-01.md`, a full
+   stage-by-stage dump (including the entitlement predicate and hash) read
+   straight off the pipeline's own context, for any of the 17 scenarios.
 
 ---
 
@@ -108,10 +117,12 @@ and CHANGELOG 002-005), that happened before freeze, is documented with the
 evidence that motivated it, and never touched `true_segment`, `true_cause_id`,
 or `evidence_document_ids` — the fields actually used for scoring.
 
-**The changelog agrees with the history.** [`CHANGELOG.md`](CHANGELOG.md) — 6
+**The changelog agrees with the history.** [`CHANGELOG.md`](CHANGELOG.md) — 10
 entries, each naming what evidence prompted a change and what the change was,
-including two real bugs found by running the scenarios (not by reading the
-code) after the engine was believed finished.
+including several real bugs found only by running the scenarios (or a live
+model) after the engine was believed finished — a validator gap on `M`/million
+suffixes, a tier-resolver crash on a model-authored pointer, a cross-process
+floating-point non-determinism bug in DuckDB's default aggregation.
 
 **The scorecard shows failures, and now explains them.** 10 of 17 scenarios
 don't pass exactly. None of the 10 asserts a wrong or invented cause — 3
@@ -134,19 +145,23 @@ real ones, not itself a real one).
 
 We would rather name these than have you find them.
 
-- **There is no UI.** `app/main.py` is unbuilt. The engine is real,
-  ~80% of the technical work, and everything above can be verified without
-  one — but a live, clickable demo does not exist right now.
-- **The B3 (LLM-only) baseline hasn't been run**, though B1 has:
-  [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) is real, and it's
-  already the strongest comparison in the repo — a naive drill-down asserts a
-  cause on **3 of 3** scenarios where none was planted (SC-02, SC-08, SC-17),
-  because it has no concept of declining. GlassBox's rate on those same three
-  is 0/3. B3 (same data, one LLM prompt, no pipeline) would be the sharper
-  version of that same comparison but needs a live model call to be honest
-  evidence, and this build environment has none configured. The prompt-
-  payload construction is real (`eval/baselines/run_all.py::build_b3_payload`);
-  only the model call is missing, and it hasn't been faked to fill the gap.
+- **The UI exists but hasn't been eyeballed by a human.** `app/main.py`
+  (`make app`) runs every one of the 17 scenarios and all three persona
+  overrides with zero exceptions under Streamlit's headless `AppTest`
+  harness — that's real functional verification, not a claim — but nobody
+  has opened it in an actual browser to check the layout looks right. Engine
+  and evidence came first on purpose; this is the ~20% we'd finish next.
+- **Both baselines have been run live, not simulated.**
+  [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) is real: B1
+  (naive drill-down) asserts a cause on **3 of 3** scenarios where none was
+  planted (SC-02, SC-08, SC-17), because it has no concept of declining. B3
+  (same retrieved data, one LLM prompt, no pipeline, live via Groq's
+  `openai/gpt-oss-120b`) does the same on 2 of those 3 — the one it wasn't
+  sent a prompt for, SC-17, has no single question to hand it in the first
+  place. GlassBox's rate on those same three: 0/3. On SC-08 specifically, B3
+  produces a fluent, ~70-80%-confident cause citing a real ticket number
+  (TCK-6666) that is a planted decoy — see `TRAJECTORIES.md`'s §2 for the
+  full transcript.
 - **The primary dataset is synthetic.** It has to be — no public dataset
   pairs business KPIs with customer text *and* labelled causes
   ([why](docs/05_DATA_STRATEGY.md#2-why-the-ideal-dataset-does-not-exist)).
@@ -160,13 +175,20 @@ We would rather name these than have you find them.
   is a stricter, more conservative response than originally designed for but
   not a wrong one; see `eval/scorecard.md`'s Misses section for the specific
   evidence-floor reason.
-- **Narration prose quality depends on a live LLM key, which this environment
-  doesn't have.** Every number in every run is still validated against the
-  findings object regardless (see `TRAJECTORIES.md` — the template fallback
-  is legible but mechanical, e.g. `"driven by: Movement localized to
-  {'category': 'Audio', 'region': 'South'}"`), but the natural-language
-  quality a live model would produce hasn't been demonstrated in this repo
-  yet.
+- **The default clone runs the template narrator, not the live one, and
+  that's a real gap worth naming precisely.** Live narration quality *has*
+  been demonstrated — we ran it this session (Groq,
+  `openai/gpt-oss-120b`) and it produced natural, correctly-validated prose,
+  e.g. *"Net revenue fell 23.5% (Rs 34,99,600) in the week to 14 Aug... The
+  primary driver is a localized movement in the Audio category within the
+  South region..."* (`TRAJECTORIES.md`'s §1). But a determinism bug fix
+  (single-threaded DuckDB, `PRAGMA threads=1` — see CHANGELOG) invalidated
+  the replay-cache keys computed during that testing, and repopulating them
+  hit unresolved hangs against the live API. So `eval/replay_cache/narrate/`
+  is currently empty, and a fresh clone gets the template fallback instead —
+  legible but mechanical, e.g. `"driven by: Movement localized to
+  {'category': 'Audio', 'region': 'South'}"`. Every number is validated
+  against the findings object either way.
 - **The semantic contract is real adoption cost.** Five metrics is an
   afternoon each with their owners. Four hundred is a programme, and we would
   not pretend otherwise.

@@ -11,6 +11,9 @@ data/generated/
 runs/
 *.duckdb
 
+# Generated - rebuilt by `python -m eval.trace`, never committed
+eval/traces/
+
 # External datasets - licensing. See data/README.md.
 data/external/
 

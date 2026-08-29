@@ -1,4 +1,4 @@
-## Scorecard — a108f60 — 2026-08-30
+## Scorecard — 9ca7502 — 2026-08-30
 
 ### Headline
 **Hallucinated-cause rate: 0/17.** No run ever asserted a cause the manifest says wasn't there, and no run ever asserted the wrong branch entirely (every miss below reached the *correct* branch or a strictly more cautious one). The misses split two ways: over-cautious abstentions (SC-06, SC-12, SC-15) that declined rather than assert an uncertain cause, and imprecise localizations (SC-04, SC-05, SC-07, SC-10, SC-11, SC-14, SC-16) that answered on the right branch with real, cited evidence but named a broader or adjacent segment than the exact ground truth. Neither failure mode is a fabrication. Abstention recall 1.00 (1/1) — the negative control (SC-08) is always caught. Abstention precision 0.25 (1/4) is the honest cost of that caution. See Misses below for why each one specifically.

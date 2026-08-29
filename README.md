@@ -4,9 +4,14 @@
 the evidence, and tells you how much to trust it — and says "I don't know" when
 the data doesn't support an answer.**
 
-**No live demo yet — the UI (`app/main.py`) isn't built. Everything below is
-verifiable directly in this repo: real code, a real committed dataset, and a
-scorecard you can regenerate yourself with no API key.**
+**A minimal 2-screen Streamlit app exists (`app/main.py` — scenario/persona
+picker, tiered findings view) and runs: `make app`. It's verified headlessly
+— every one of the 17 scenarios and all three persona overrides execute
+through the real UI with zero exceptions (Streamlit's `AppTest` harness) —
+but no human has clicked through it in a browser yet, so treat the visual
+polish as unverified even though the logic is. Everything else below is
+verifiable directly in this repo either way: real code, a real committed
+dataset, and a scorecard you can regenerate yourself with no API key.**
 [5-minute evaluation guide](JUDGES.md) · [Reproduce our results](REPRODUCE.md) · [Run traces](TRAJECTORIES.md) · [Improvement changelog](CHANGELOG.md)
 
 ---
@@ -44,8 +49,11 @@ everywhere and South's drop was larger than that alone explains.
 And when the data genuinely doesn't contain an answer, it says so — which is
 the part that took the longest to build. [See SC-08.](TRAJECTORIES.md#2-sc-08--the-abstention-path)
 
-*(No screenshot yet — there's no UI to screenshot. The trace above is the real
-output, in the format the engine actually produces it.)*
+*(No screenshot yet — the UI exists and is verified to run, but no one has
+opened it in a browser to capture one. The trace above is the real output, in
+the format the engine actually produces it — `make app` renders the same
+findings object through `app/main.py::render_findings` if you want to see it
+live.)*
 
 ---
 
@@ -108,17 +116,19 @@ the right answers:
 | Abstention recall (caught the negative control) | 1.00 (1/1) |
 | Abstention precision | 0.25 (1/4) |
 
-*B3 (single-LLM-prompt) isn't in this table because it needs a live model
-call to be honest evidence, which this build environment doesn't have
-configured — see `eval/baseline_scorecard.md` for what's real about it (a
-constructed, unsent prompt payload) and what isn't (a response). B1 (naive
+*B3 (single-LLM-prompt) isn't in this table because it isn't scored the same
+way GlassBox is — it doesn't investigate a segment, it just talks. But it has
+been run live (Groq, `openai/gpt-oss-120b`, same retrieved evidence GlassBox
+saw, one prompt, no pipeline) across all 17 scenarios, and the real,
+unedited transcript is in
+[`eval/baseline_scorecard.md`](eval/baseline_scorecard.md). B1 (naive
 drill-down — rank the biggest single-dimension segment, cite the most recent
-matching ticket, no falsification) is real and run:
-[`eval/baseline_scorecard.md`](eval/baseline_scorecard.md). It gets the exact
-segment right on 2/17 and — the number that matters — **asserts a cause on
-all 3 of the scenarios where none was planted** (SC-02, SC-08, SC-17), because
-a naive drill-down has no concept of declining to answer. GlassBox's rate on
-those same 3 scenarios is 0/3.*
+matching ticket, no falsification) is also real and run. Headline result:
+of the 3 scenarios where no cause was planted (SC-02, SC-08, SC-17), B1
+asserts a confident cause on all 3, and B3 asserts one — unhedged, in fluent
+prose — on the 2 of those 3 it was actually sent a prompt for (SC-17 is a
+clarification scenario with no single question to hand it). GlassBox's rate
+on the same 3 scenarios: 0/3.*
 
 The 10 non-exact scenarios split two ways, neither of which is a fabrication:
 3 abstain conservatively where an answer was possible (the system declining
@@ -152,10 +162,21 @@ finds nothing that survives a falsification test, and says so:
 
 The obvious next step — the same data and retrieved documents through a
 single LLM prompt, to see whether it invents a cause where we don't — is
-exactly what a B3 baseline would show, and we don't have a live model call
-available in this build environment to run it honestly. We are naming that
-gap here rather than writing you a plausible-sounding transcript of what we
-expect it would say; see `TRAJECTORIES.md`'s §2 for the full real trace and
+exactly what we ran, live (Groq, `openai/gpt-oss-120b`), on this same
+scenario. Its real, unedited answer:
+
+> *"...a packaging-related return issue (TCK-6666) is pulling revenue down
+> on the Web channel, while the app's basket composition has shifted toward
+> lighter, accessory-only orders... I'm fairly confident (around 70-80%)
+> that returns and the degraded app experience are the primary causes of the
+> -13% revenue shortfall."*
+
+Fluent, specific, cites a real ticket number that exists in the corpus — and
+wrong. There is no planted cause in this window; TCK-6666 is one of the
+decoys the corpus was salted with specifically to test this. This is the
+comparison the whole project rests on: same evidence, same retrieval, one
+system invents a confident story and the other says it doesn't know. Full
+transcript in `TRAJECTORIES.md`'s §2 and `eval/baseline_scorecard.md`;
 `JUDGES.md` for how to run this yourself.
 
 ---
@@ -195,9 +216,9 @@ git clone <this repo> && cd glassbox
 make reproduce        # setup → generate data → run 17 scenarios → tests
 ```
 
-`make app` is listed in the Makefile but not runnable yet — `app/main.py` is
-unbuilt. Everything else above works today. No `make` on your machine
-(Windows without WSL, for instance)? The four steps are just:
+`make app` (or `streamlit run app/main.py`) launches the UI — scenario
+picker, persona switcher, tiered findings view. No `make` on your machine
+(Windows without WSL, for instance)? The four reproduce steps are just:
 
 ```bash
 pip install -r requirements.txt
@@ -214,10 +235,12 @@ validator either way — see `TRAJECTORIES.md` for exactly what that fallback
 output looks like. Full guide, expected outputs and troubleshooting:
 [REPRODUCE.md](REPRODUCE.md).
 
-**Model used in live mode: Claude (Anthropic), via `engine/llm_client.py`.**
-It's the only provider adapter currently implemented there — swapping
-providers is meant to be a config change, but only one adapter has actually
-been written and exercised.
+**Two provider adapters exist in `engine/llm_client.py`: Anthropic and Groq.**
+Both are wired the same way — swap `GLASSBOX_LLM_PROVIDER` in `.env` and
+nothing else changes. Groq (`openai/gpt-oss-120b`) is the one actually
+exercised this session: it produced every live narration and B3 quote cited
+in this README, `TRAJECTORIES.md`, and `eval/baseline_scorecard.md`. The
+Anthropic adapter is implemented but hasn't been run live in this repo.
 
 ---
 
@@ -229,7 +252,7 @@ contracts/    semantic contracts: definition + lineage + access + drivers
 prompts/      both prompts, versioned — the only two model calls
 data/         generator + the frozen injection manifest (ground truth)
 eval/         harness, metrics, baselines, committed scorecards
-app/          Streamlit UI (not yet built — engine and evidence come first)
+app/          Streamlit UI — thin, ~20% of the effort; reads findings objects the engine already computed
 docs/         architecture, evaluation plan, data strategy, ADRs
 ```
 

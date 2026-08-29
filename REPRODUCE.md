@@ -9,9 +9,9 @@ machine. **No API key is required.** The two LLM touchpoints fall back to a
 deterministic parser and a template narrator when no key is configured — see
 `TRAJECTORIES.md` for exactly what that output looks like.
 
-**There is no UI yet.** Steps 1-3 and 7 below (setup, data, eval, tests) are
-real and work today. Steps 4-6 (baselines, RS benchmark, app) are honestly
-marked as not yet built rather than described as if they worked.
+Steps 1-4 and 6-7 below (setup, data, eval, baselines, app, tests) are real
+and work today. Step 5 (the external RS benchmark) is honestly marked as not
+yet run rather than described as if it were.
 
 ---
 
@@ -107,17 +107,28 @@ assumed), so this should never vary run to run on the same code and data.
 
 ---
 
-## 4. Baselines — not yet built
+## 4. Baselines — ~28s (no key), longer with a live key
 
 ```bash
 python -m eval.harness --baseline --out eval/baseline_scorecard.md    # or: make baseline
 ```
 
-This command exists in the CLI but `eval/baselines/` only has its README —
-the B1 (naive drill-down) and B3 (single-LLM-prompt) implementations aren't
-written yet. Running it will fail with an import error. `eval/baseline_scorecard.md`
-is committed as an honest "NOT YET GENERATED" placeholder rather than left
-missing or faked. Status: `CHECKLIST.md` Phase 6.
+Runs B1 (naive drill-down — real, deterministic, no LLM) and B3
+(single-LLM-prompt) across all 17 scenarios and writes
+`eval/baseline_scorecard.md`. Without a live key configured, B3's rows
+honestly read `NOT RUN (replay mode / no live key configured)` rather than
+faking a response — regenerating this way overwrites the real live B3
+transcript currently committed (Groq, `openai/gpt-oss-120b`, all 17
+scenarios) with that honest placeholder, so if you want to keep the real
+quotes, copy the file first. With `GLASSBOX_REPLAY=0` and a real
+`GLASSBOX_LLM_PROVIDER`/`GLASSBOX_LLM_API_KEY` set, B3 makes real calls and
+this takes several minutes (Groq's free tier rate-limits; the client retries
+on 429 with backoff — see `engine/llm_client.py::_urlopen_with_retry`).
+
+**Expected — B1 totals should match exactly:**
+```
+B1 totals: 2/17 exact segment match · 3/17 scenarios where B1 named a cause on an unplanted movement
+```
 
 ---
 
@@ -134,17 +145,32 @@ committed as an honest placeholder for the same reason as above.
 
 ---
 
-## 6. The app — not yet built
+## 6. The app — cold start under 2s
 
 ```bash
 streamlit run app/main.py    # or: make app
 ```
 
-`app/main.py` currently raises `NotImplementedError`. There is no UI to tour
-yet. Everything a UI would show you — the tiered narrative, the evidence
-drawer's contents, the entitlements diff between personas — is directly
-readable from a real run's output; see `JUDGES.md`'s 15-minute path for the
-Python-shell equivalent of each planned screen.
+Opens a browser tab at `localhost:8501`: a sidebar scenario picker
+(SC-01..SC-17, including the ones that don't pass) and persona switcher, a
+main panel with the tiered narrative, evidence drawer, decomposition chart
+and action card. Offline by default, same as everything else — responses
+come from the committed replay cache and the app says so above the result
+(a 🔁 REPLAYING / 🟢 LIVE banner; silent replay would be dishonest).
+
+**Important:** DuckDB only allows one writer at a time. Don't run the app
+and `make eval`/`make reproduce`/`pytest` against the same
+`data/generated/meridian.duckdb` concurrently — the second process fails
+with `IOException: File is already open`. Stop the app (or the other
+process) first.
+
+**Verified without a browser**, since screenshotting one wasn't available in
+this environment: Streamlit's `AppTest` harness drove `app/main.py`
+end-to-end — selected each of the 17 scenarios, clicked Run, and switched
+all three persona overrides — and every run completed with zero exceptions,
+covering every branch the UI renders (no_alert, answer, abstention,
+clarification). That's real functional verification; nobody has confirmed
+the layout looks right in an actual browser yet.
 
 ---
 
@@ -184,6 +210,7 @@ Real failures hit while writing this guide, not invented ones:
 | `SyntaxError` on `str \| None` | Python ≤ 3.10 | Use 3.11+ |
 | `make: command not found` | No `make` on this machine (plain Windows, no WSL) | Use the `python -m ...` form of each target shown above — every target is one line |
 | `duckdb.duckdb.ConnectionException: Connection has already been closed` | Another process still holds the DuckDB file open (e.g. a previous script that didn't close its connection, or a concurrent `du`/backup process scanning the file) | Close other processes touching `data/generated/meridian.duckdb`, or open with `read_only=True` |
+| `duckdb.duckdb.IOException: File is already open in <path> (PID ...)` | DuckDB allows exactly one writer. Hit this directly this session: `pytest` failed because a `streamlit run app/main.py` left running in the background from an earlier step still held the file open | Stop the other process (the PID is in the error message) before running `pytest`, `eval.harness`, or another app instance |
 | `UnicodeEncodeError: 'charmap' codec can't encode characters` when printing a DuckDB relation directly in a Windows terminal | DuckDB's pretty-printed table repr uses box-drawing Unicode characters the default Windows `cp1252` console encoding can't render | Call `.fetchone()` / `.fetchall()` and print the plain Python value instead of printing the relation object |
 | `pip install` takes much longer than expected | `sentence-transformers` pulls in PyTorch, which is large (~600MB-1GB depending on platform) | Expected — budget 10+ minutes on a fresh install, more on a slow connection |
 | Embedding-based retrieval silently falls back to BM25-only | No network access to download the `all-MiniLM-L6-v2` model on first use | Expected degradation, not a bug — `engine/stages/s05_retrieve.py` catches this and continues with BM25 alone, same as it would with `sentence-transformers` uninstalled |
@@ -197,7 +224,8 @@ Real failures hit while writing this guide, not invented ones:
 | Install | 10+ min (dominated by PyTorch download) | $0 |
 | Generate data | ~10-25s | $0 |
 | Evaluate (17 scenarios) | ~26s | $0 (no live model call configured) |
-| Baselines | not built | — |
+| Baselines (17 scenarios, no key) | ~28s | $0 |
+| App cold start | under 2s to first healthy response | $0 |
 | Tests | ~29s | $0 |
 | **Steps 1+2+3+7 combined** | **~11-12 min, install-dominated** | **$0** |
 

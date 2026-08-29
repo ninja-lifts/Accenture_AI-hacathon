@@ -14,7 +14,7 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
       is the pitch live?)
 - [x] ⭐ `[Y]` **Injection manifest committed before any engine code**
 - [x] `[Y]` That commit hash recorded in README + CHANGELOG 001
-- [ ] `[B]` Data contract between your two halves written into the blueprint
+- [x] `[B]` Data contract between your two halves written into the blueprint (`docs/02_BUILD_BLUEPRINT.md` §4 — `metric_row`/`document`/`evidence_ref` shapes; spot-checked this session against `schemas/findings.schema.json`'s `evidenceRef` def and `engine/stages/s05_retrieve.py`'s actual field construction, both match exactly)
 - [ ] `[B]` `docs/00_SUBMISSION_STRATEGY.md` read by both of you
 
 ## Phase 1 — data
@@ -49,7 +49,7 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] ⭐ `[Y]` tiers.py + monotonicity test
 - [x] ⭐ `[Y]` gate.py + invariant test
 - [x] `[Y]` pipeline emits schema-valid findings
-- [ ] `[Y]` `--trace` flag *(not built — see gaps below)*
+- [x] `[Y]` `--trace` flag (`python -m eval.trace SC-01`, writes `eval/traces/SC-01.md`) — `pipeline.run(..., trace=True)` is additive, every existing caller's return shape is unchanged; tested across all four branch types (answer, abstention, no_alert, clarification)
 - [x] ⭐ `[Y]` SC-01 passes · ⭐ SC-08 abstains
 
 ## Phase 5 — narration + UI
@@ -58,7 +58,7 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] ⭐ `[Y]` validator + its test
 - [x] `[Y]` s00 intent + clarification branch (SC-17)
 - [ ] `[Y]` Replay cache committed — **not currently populated.** A Groq key became available this session and live narration was verified working for real (CHANGELOG 008-010, real quotes preserved there and in `eval/baseline_scorecard.md`), but a determinism bug fix (CHANGELOG 010's companion fix in `engine/pipeline.py::_setup`, forcing single-threaded DuckDB) invalidated the cache keys computed during testing, and repeated attempts to repopulate afterward hit long, unexplained hangs against the live API that this session couldn't resolve. `eval/replay_cache/narrate/` is empty; a fresh clone today gets the deterministic template narrator, which is still numerically correct, just less polished prose. Named honestly rather than claimed and left broken.
-- [x] `[N]` Persona switcher · alert feed(-equivalent) · question box (`app/main.py` — sidebar persona override + scenario picker; not yet browser-verified, see gaps below)
+- [x] `[N]` Persona switcher · alert feed(-equivalent) · question box (`app/main.py` — sidebar persona override + scenario picker; functionally verified via headless `AppTest` across all 17 scenarios × 3 personas, zero exceptions — not yet browser-verified, see gaps below)
 - [x] ⭐ `[N]` Tiered sentences · evidence drawer · action card (`app/main.py::render_findings`)
 - [ ] `[N]` Progress narration during the run
 - [ ] `[N]` Tier tooltips *(tier badges have a hover title with the gloss; not a dedicated tooltip UI)*
@@ -66,7 +66,7 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] `[N]` Scenario picker (including failures) — sidebar dropdown over all 17
 - [ ] `[N]` Three-channel render
 - [ ] `[N]` "Try to break it" tab
-- [ ] `[B]` Someone who has never seen it completes the tour unaided — **not yet done; the Chrome browser tool couldn't connect this session, so the app has not been visually verified end to end, only import/syntax-checked**
+- [ ] `[B]` Someone who has never seen it completes the tour unaided — **not yet done. The app is functionally verified (headless `AppTest` run across all 17 scenarios and 3 personas, zero exceptions — a stronger check than a screenshot for logic bugs), but the Chrome browser tool has failed to connect across three attempts in two sessions, so no human has actually looked at the rendered layout in a browser.**
 
 ## Phase 6 — evidence
 - [x] `[Y]` Harness + metrics
