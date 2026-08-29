@@ -1,0 +1,22 @@
+# Pinned at Phase 0. Adding a dependency is a decision, not a reflex -
+# see CLAUDE.md rule 9. Every line here is one more thing that can break on a
+# judge's laptop at 11pm.
+
+duckdb==1.1.3
+pandas==2.2.3
+numpy==2.1.3
+pyyaml==6.0.2
+jsonschema==4.23.0
+statsmodels==0.14.4
+scipy==1.14.1
+networkx==3.4.2
+rank-bm25==0.2.2
+sentence-transformers==3.3.1
+streamlit==1.40.2
+python-dotenv==1.0.1
+pytest==8.3.4
+ulid-py==1.1.0
+
+# LLM provider SDK: install ONE, matching GLASSBOX_LLM_PROVIDER.
+# Not pinned here because replay mode - the default - needs none of them.
+# See .env.example.

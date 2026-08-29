@@ -1,0 +1,20 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Generated - rebuilt by `make data`, never committed
+data/generated/
+runs/
+*.duckdb
+
+# External datasets - licensing. See data/README.md.
+data/external/
+
+# Never
+*.key
+*.pem
+secrets*

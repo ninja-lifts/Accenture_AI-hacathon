@@ -1,0 +1,84 @@
+# GlassBox semantic contract - TO COMPLETE IN PHASE 2
+# Shape and every field: see contracts/net_revenue.yaml (the reference) and
+# schemas/contract.schema.json (the validator). Do not invent new top-level keys.
+# Parent of net_revenue via the revenue identity. Edge direction matters: net_revenue depends_on orders, not the reverse.
+
+id: orders
+version: "1.0.0"
+display_name: Orders
+owner: Commerce Operations
+unit: count
+
+definition:
+  plain_english: >
+    Count of distinct orders placed and not cancelled, at order-date grain.
+  sql: |
+    -- TODO(Phase 2): the ONLY place this metric's arithmetic may live.
+    SELECT order_date AS ts, region, category, channel,
+           NULL AS value, NULL AS support_size
+    FROM meridian.fact_orders
+  includes: []
+  excludes: []
+
+grain: day
+
+sources:
+  - source_id: fact_orders
+    table: meridian.fact_orders
+    expected_freshness_seconds: 3600
+    quality_checks: [row_count_vs_trailing_median]
+
+dimensions:
+  - name: region
+    column: region
+    cardinality_hint: 6
+    searchable: true
+    synonyms: []
+  - name: category
+    column: category
+    cardinality_hint: 12
+    searchable: true
+    synonyms: []
+
+detection:
+  method: stl_residual_control
+  seasonality: [dow, month, festival_calendar]
+  min_history_periods: 90
+  materiality:
+    min_abs_impact: 0
+    min_z: 2.5
+
+drivers:
+  - name: order_funnel
+    relation: product
+    depends_on: [sessions, conversion_rate]
+    levers: [paid_marketing_spend, app_release_rollback]
+
+access:
+  row_rules:
+    - role: cfo
+      predicate: "TRUE"
+    - role: category_manager
+      predicate: "category IN (SELECT category FROM role_scope WHERE role_id = :role_id)"
+    - role: analyst
+      predicate: "TRUE"
+  column_rules: []
+  min_cell_size: 25
+  personas:
+    - persona: cfo
+      role: cfo
+      default_grain: month
+      narrative_style: executive
+      channels: [email, workspace]
+    - persona: category_manager
+      role: category_manager
+      default_grain: week
+      narrative_style: operational
+      channels: [chat, workspace]
+    - persona: analyst
+      role: analyst
+      default_grain: day
+      narrative_style: technical
+      channels: [workspace]
+
+glossary: {}

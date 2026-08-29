@@ -1,0 +1,32 @@
+# The scenario harness runs on every push. The scorecard is committed by the
+# workflow, misses included.
+#
+# This is our 'continuous evaluation' claim, and it is a workflow file rather
+# than a sentence in a deck. A judge can open the Actions tab and read the
+# history of our own results - including the runs where we regressed.
+
+name: eval
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: make setup
+      - run: make data
+      - run: make test
+      - run: make eval
+      - name: Publish scorecard
+        run: |
+          git config user.name  "eval-bot"
+          git config user.email "eval-bot@users.noreply.github.com"
+          git add eval/scorecard.md
+          git diff --staged --quiet || git commit -m "eval: scorecard [skip ci]"
+          git push || true

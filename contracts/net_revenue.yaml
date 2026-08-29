@@ -1,0 +1,181 @@
+# =============================================================================
+# GlassBox semantic contract - REFERENCE IMPLEMENTATION
+# =============================================================================
+# This is the one contract written out in full. The other four
+# (orders, aov, conversion_rate, delivery_sla) follow this exact shape.
+# Validated against schemas/contract.schema.json at startup - a contract that
+# fails validation stops the app, it does not degrade quietly.
+#
+# Read this file once and you understand the whole product: the metric's
+# meaning, its lineage, who may see what, how noise is separated from signal,
+# and which levers a recommendation is allowed to pull. Everything the engine
+# does is downstream of a file like this.
+# =============================================================================
+
+id: net_revenue
+version: "1.0.0"
+display_name: Net Revenue
+owner: Finance Operations
+unit: currency
+
+definition:
+  plain_english: >
+    Revenue from delivered orders after discounts, returns and cancellations,
+    excluding shipping charges collected and excluding intra-company transfers.
+  # The ONLY place this arithmetic exists. Stage 01 runs this; nothing else
+  # computes net revenue anywhere in the codebase.
+  sql: |
+    SELECT
+      order_date            AS ts,
+      region,
+      category,
+      channel,
+      SUM(gross_item_value
+          - discount_value
+          - return_value)   AS value,
+      COUNT(DISTINCT order_id) AS support_size
+    FROM fact_orders
+    WHERE order_status IN ('delivered', 'shipped')
+      AND is_internal_transfer = FALSE
+    GROUP BY 1, 2, 3, 4
+  includes:
+    - delivered orders
+    - shipped orders not yet delivered
+    - discounts applied at order level
+  excludes:
+    # These exclusions are the interesting part. "Excludes cancelled orders" is
+    # the single sentence that SC-09 (definition drift) breaks upstream, and the
+    # reason the engine can tell a definition change from a business change.
+    - cancelled orders
+    - shipping charges collected
+    - intra-company transfers
+    - marketplace seller gross value where Meridian is not merchant of record
+
+grain: day
+
+sources:
+  - source_id: fact_orders
+    table: meridian.fact_orders
+    expected_freshness_seconds: 3600
+    quality_checks:
+      - row_count_vs_trailing_median
+      - null_rate_on_region
+      - late_arriving_partition_check
+  - source_id: dim_product
+    table: meridian.dim_product
+    expected_freshness_seconds: 86400
+    quality_checks:
+      - orphan_sku_check
+
+dimensions:
+  - name: region
+    column: region
+    cardinality_hint: 6
+    searchable: true
+    synonyms: ["the south", "southern region", "south zone", "north", "west", "east"]
+  - name: category
+    column: category
+    cardinality_hint: 12
+    searchable: true
+    synonyms: ["audio", "headphones", "large appliances", "mobiles", "phones"]
+  - name: channel
+    column: channel
+    cardinality_hint: 4
+    searchable: true
+    synonyms: ["app", "mobile app", "web", "desktop", "retail", "store", "partner"]
+  - name: payment_method
+    column: payment_method
+    cardinality_hint: 8
+    searchable: true
+  - name: customer_id
+    column: customer_id
+    cardinality_hint: 500000
+    searchable: false          # never localize to an individual customer
+    synonyms: []
+
+detection:
+  method: stl_residual_control
+  seasonality: [dow, month, festival_calendar]
+  min_history_periods: 90
+  materiality:
+    # DUAL threshold, deliberately. A 4-sigma wobble worth Rs 40,000 is not an
+    # alert; a 1.2-sigma drift worth Rs 40 lakh is. Requiring both is what keeps
+    # the alert feed at single digits instead of 200 rows nobody reads.
+    min_abs_impact: 2500000     # INR
+    min_z: 2.5
+
+drivers:
+  - name: revenue_identity
+    relation: additive_decomposition
+    depends_on: [orders, aov]
+    levers: []
+  - name: order_volume
+    relation: product
+    depends_on: [sessions, conversion_rate]
+    levers:
+      - paid_marketing_spend
+      - app_release_rollback
+      - checkout_incident_response
+  - name: basket_value
+    relation: product
+    depends_on: [units_per_order, unit_price]
+    levers:
+      - promotion_depth
+      - bundle_configuration
+      - price_change
+  - name: fulfilment_quality
+    relation: ratio
+    depends_on: [delivery_sla]
+    levers:
+      - courier_reallocation
+      - warehouse_capacity
+      - serviceability_pincode_review
+
+access:
+  row_rules:
+    # Pushed into the SQL as predicates, not filtered afterwards. A Category
+    # Manager's run is a genuinely different query, and findings.request
+    # .principal.entitlements_hash proves it.
+    - role: cfo
+      predicate: "TRUE"
+    - role: category_manager
+      predicate: "category IN (SELECT category FROM role_scope WHERE role_id = :role_id)"
+    - role: analyst
+      predicate: "TRUE"
+  column_rules:
+    - column: customer_id
+      visible_to: [analyst]
+      treatment: hashed
+    - column: customer_email
+      visible_to: []
+      treatment: excluded
+    - column: margin_pct
+      visible_to: [cfo]
+      treatment: masked
+  min_cell_size: 25            # below this, roll up to parent - see SC-15
+  personas:
+    - persona: cfo
+      role: cfo
+      default_grain: month
+      narrative_style: executive
+      channels: [email, workspace]
+    - persona: category_manager
+      role: category_manager
+      default_grain: week
+      narrative_style: operational
+      channels: [chat, workspace]
+    - persona: analyst
+      role: analyst
+      default_grain: day
+      narrative_style: technical
+      channels: [workspace]
+
+glossary:
+  net_revenue: "Money actually earned from orders that shipped, after discounts and returns."
+  materiality: "A movement counts only if it is both statistically unusual and financially large enough to act on."
+  VERIFIED: "Recomputed directly from the source numbers. Arithmetic, not judgement."
+  EVIDENCED: "Supported by specific documents we can show you."
+  TESTED: "We tried to disprove this and failed to."
+  CORRELATED: "Moves together with the metric. We have not established that it caused it."
+  HYPOTHESIS: "A plausible mechanism with no support yet. Treat as a lead, not a finding."
+  UNKNOWN: "We are not willing to grade this claim."
