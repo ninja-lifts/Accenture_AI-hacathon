@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glassbox.local/schemas/findings.schema.json",
+  "title": "GlassBox Findings Object",
+  "description": "FROZEN. The single output contract of the GlassBox pipeline. Every renderer, test, audit record and evaluation metric reads this object and nothing else. A run produces exactly one findings object with exactly one of the three outcome branches populated.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "created_at",
+    "request",
+    "kpi",
+    "window",
+    "outcome",
+    "provenance",
+    "telemetry"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "run_id": { "type": "string", "description": "ULID. Also the audit-record key and the replay-cache key." },
+    "created_at": { "type": "string", "format": "date-time" },
+
+    "request": {
+      "type": "object",
+      "required": ["trigger", "principal"],
+      "additionalProperties": false,
+      "properties": {
+        "trigger": { "enum": ["alert_sweep", "user_question"] },
+        "raw_question": { "type": ["string", "null"], "description": "Verbatim user text when trigger=user_question. Null for alert_sweep." },
+        "principal": {
+          "type": "object",
+          "required": ["persona", "role_id", "entitlements_hash"],
+          "additionalProperties": false,
+          "properties": {
+            "persona": { "enum": ["cfo", "category_manager", "analyst"] },
+            "role_id": { "type": "string" },
+            "entitlements_hash": { "type": "string", "description": "SHA256 of the resolved entitlement set. Proves the same run under a different role is a genuinely different computation, not a filtered view of one." }
+          }
+        }
+      }
+    },
+
+    "kpi": {
+      "type": "object",
+      "required": ["id", "contract_version", "display_name", "unit"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "examples": ["net_revenue"] },
+        "contract_version": { "type": "string" },
+        "display_name": { "type": "string" },
+        "unit": { "enum": ["currency", "count", "ratio", "days"] }
+      }
+    },
+
+    "window": {
+      "type": "object",
+      "required": ["focal_start", "focal_end", "comparison_start", "comparison_end", "grain"],
+      "additionalProperties": false,
+      "properties": {
+        "focal_start": { "type": "string", "format": "date" },
+        "focal_end": { "type": "string", "format": "date" },
+        "comparison_start": { "type": "string", "format": "date" },
+        "comparison_end": { "type": "string", "format": "date" },
+        "grain": { "enum": ["day", "week", "month"] }
+      }
+    },
+
+    "movement": {
+      "type": ["object", "null"],
+      "description": "Null only when the pipeline stopped at Stage 00/01 (clarification branch).",
+      "required": ["observed", "expected", "delta_abs", "delta_pct", "materiality"],
+      "additionalProperties": false,
+      "properties": {
+        "observed": { "type": "number" },
+        "expected": { "type": "number" },
+        "expected_lo": { "type": "number" },
+        "expected_hi": { "type": "number" },
+        "delta_abs": { "type": "number" },
+        "delta_pct": { "type": "number" },
+        "z_score": { "type": ["number", "null"] },
+        "materiality": {
+          "type": "object",
+          "required": ["statistically_surprising", "materially_large", "suppressed_by_registry"],
+          "additionalProperties": false,
+          "properties": {
+            "statistically_surprising": { "type": "boolean" },
+            "materially_large": { "type": "boolean" },
+            "suppressed_by_registry": { "type": "boolean" },
+            "registry_entry_id": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+
+    "outcome": {
+      "type": "object",
+      "description": "EXACTLY ONE of answer / abstention / clarification is non-null. This is the hard invariant of the system: the engine answers, declines, or asks - never a blend. engine/gate.py enforces it and tests/test_gate_invariant.py proves it.",
+      "required": ["branch", "answer", "abstention", "clarification"],
+      "additionalProperties": false,
+      "properties": {
+        "branch": { "enum": ["answer", "abstention", "clarification"] },
+
+        "answer": {
+          "type": ["object", "null"],
+          "required": ["headline", "narrative", "localization", "decomposition", "drivers", "action"],
+          "additionalProperties": false,
+          "properties": {
+            "headline": { "$ref": "#/$defs/tieredClaim" },
+            "narrative": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/tieredClaim" },
+              "description": "Every sentence shown to a user is a tiered claim. There is no untiered prose anywhere in the product."
+            },
+            "localization": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/segment" }
+            },
+            "decomposition": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["component", "contribution_abs", "contribution_pct"],
+                "additionalProperties": false,
+                "properties": {
+                  "component": { "enum": ["price", "volume", "mix", "new", "churn", "other"] },
+                  "contribution_abs": { "type": "number" },
+                  "contribution_pct": { "type": "number" }
+                }
+              }
+            },
+            "drivers": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/driver" }
+            },
+            "rejected_hypotheses": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/rejectedHypothesis" },
+              "description": "What the engine considered and ruled out, with the test that ruled it out. This field is the difference between an explanation and an assertion - never let it be empty on a real answer."
+            },
+            "action": { "$ref": "#/$defs/action" }
+          }
+        },
+
+        "abstention": {
+          "type": ["object", "null"],
+          "required": ["reason_code", "statement", "ruled_out", "what_would_resolve_it", "referral"],
+          "additionalProperties": false,
+          "properties": {
+            "reason_code": {
+              "enum": [
+                "no_candidate_passed_evidence_floor",
+                "evidence_contradicts_all_candidates",
+                "insufficient_history",
+                "data_quality_failure",
+                "segment_too_small_to_disclose"
+              ]
+            },
+            "statement": { "type": "string" },
+            "ruled_out": { "type": "array", "items": { "$ref": "#/$defs/rejectedHypothesis" } },
+            "what_would_resolve_it": { "type": "array", "items": { "type": "string" } },
+            "referral": {
+              "type": "object",
+              "required": ["team", "why"],
+              "additionalProperties": false,
+              "properties": {
+                "team": { "type": "string" },
+                "why": { "type": "string" }
+              }
+            }
+          }
+        },
+
+        "clarification": {
+          "type": ["object", "null"],
+          "required": ["question", "ambiguity_type", "options", "vocabulary_source"],
+          "additionalProperties": false,
+          "properties": {
+            "question": { "type": "string" },
+            "ambiguity_type": { "enum": ["kpi_ambiguous", "segment_ambiguous", "window_ambiguous", "multiple"] },
+            "options": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "required": ["label", "resolves_to"],
+                "additionalProperties": false,
+                "properties": {
+                  "label": { "type": "string" },
+                  "resolves_to": { "type": "object" }
+                }
+              }
+            },
+            "vocabulary_source": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Contract ids the options were drawn from. The engine may only offer choices that exist in a contract - it never invents a disambiguation."
+            }
+          }
+        }
+      }
+    },
+
+    "provenance": {
+      "type": "object",
+      "required": ["sources", "code_version", "contracts_used", "replay_mode"],
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_id", "as_of", "freshness_seconds", "row_count"],
+            "additionalProperties": false,
+            "properties": {
+              "source_id": { "type": "string" },
+              "as_of": { "type": "string", "format": "date-time" },
+              "freshness_seconds": { "type": "integer" },
+              "row_count": { "type": "integer" },
+              "quality_flags": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "code_version": { "type": "string", "description": "git describe --always --dirty" },
+        "contracts_used": { "type": "array", "items": { "type": "string" } },
+        "replay_mode": { "type": "boolean", "description": "True when LLM responses came from the committed replay cache rather than a live endpoint. Must be surfaced in the UI - never silently replayed." }
+      }
+    },
+
+    "telemetry": {
+      "type": "object",
+      "required": ["stage_timings_ms", "total_ms", "llm_calls", "tokens_in", "tokens_out", "estimated_cost_usd", "rows_scanned"],
+      "additionalProperties": false,
+      "properties": {
+        "stage_timings_ms": { "type": "object", "additionalProperties": { "type": "number" } },
+        "total_ms": { "type": "number" },
+        "llm_calls": { "type": "integer", "maximum": 2, "description": "Hard cap. Two touchpoints exist: intent parse and narration. A third means someone broke the architecture." },
+        "tokens_in": { "type": "integer" },
+        "tokens_out": { "type": "integer" },
+        "estimated_cost_usd": { "type": "number" },
+        "rows_scanned": { "type": "integer" },
+        "validator_retries": { "type": "integer", "description": "How many times the narration failed number validation and was regenerated. Non-zero is interesting, not embarrassing - it is the guard working." }
+      }
+    },
+
+    "security": {
+      "type": "object",
+      "required": ["cells_suppressed", "documents_withheld", "redactions_applied", "injection_flags"],
+      "additionalProperties": false,
+      "properties": {
+        "cells_suppressed": { "type": "integer", "description": "Segments rolled up because they fell below the small-cell threshold." },
+        "documents_withheld": { "type": "integer", "description": "Documents excluded because the principal was not entitled to read them." },
+        "redactions_applied": { "type": "integer" },
+        "injection_flags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["document_id", "pattern", "action_taken"],
+            "additionalProperties": false,
+            "properties": {
+              "document_id": { "type": "string" },
+              "pattern": { "type": "string" },
+              "action_taken": { "enum": ["quoted_as_inert_evidence", "excluded"] }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "tier": {
+      "enum": ["VERIFIED", "EVIDENCED", "TESTED", "CORRELATED", "HYPOTHESIS", "UNKNOWN"],
+      "description": "Assigned by rule in engine/tiers.py from the evidence present. Never assigned by an LLM. VERIFIED = recomputed from source arithmetic. EVIDENCED = supported by cited documents. TESTED = survived a counterfactual/falsification test. CORRELATED = statistical association only. HYPOTHESIS = plausible mechanism, no support. UNKNOWN = the engine declines to grade."
+    },
+    "tieredClaim": {
+      "type": "object",
+      "required": ["text", "tier", "support"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string" },
+        "tier": { "$ref": "#/$defs/tier" },
+        "support": {
+          "type": "object",
+          "required": ["numbers", "evidence_ids", "test_ids"],
+          "additionalProperties": false,
+          "properties": {
+            "numbers": {
+              "type": "array",
+              "items": { "type": "number" },
+              "description": "Every numeral appearing in text must be present here AND traceable to a stage output. engine/validator.py rejects narration that violates this."
+            },
+            "evidence_ids": { "type": "array", "items": { "type": "string" } },
+            "test_ids": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "required": ["dimensions", "contribution_abs", "contribution_pct", "rank", "suppressed"],
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": { "type": "object", "additionalProperties": { "type": "string" } },
+        "contribution_abs": { "type": "number" },
+        "contribution_pct": { "type": "number" },
+        "rank": { "type": "integer" },
+        "suppressed": { "type": "boolean" },
+        "suppression_reason": { "type": ["string", "null"] },
+        "support_size": { "type": ["integer", "null"] }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "required": ["document_id", "source", "snippet", "retrieval_score", "published_at"],
+      "additionalProperties": false,
+      "properties": {
+        "document_id": { "type": "string" },
+        "source": { "enum": ["support_ticket", "crm_note", "field_report", "change_log", "vendor_email"] },
+        "snippet": { "type": "string", "maxLength": 400 },
+        "retrieval_score": { "type": "number" },
+        "published_at": { "type": "string", "format": "date-time" },
+        "entitlement_ok": { "type": "boolean" },
+        "flagged_injection": { "type": "boolean" }
+      }
+    },
+    "falsificationTest": {
+      "type": "object",
+      "required": ["test_id", "method", "statement", "result", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "test_id": { "type": "string" },
+        "method": { "enum": ["difference_in_differences", "placebo_timing", "unaffected_control_segment", "dose_response", "leave_one_out", "pre_period_contamination_check"] },
+        "statement": { "type": "string" },
+        "result": { "enum": ["survived", "failed", "inconclusive"] },
+        "detail": { "type": "object" }
+      }
+    },
+    "driver": {
+      "type": "object",
+      "required": ["driver_id", "statement", "tier", "share_of_movement_pct", "evidence", "tests"],
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": { "type": "string" },
+        "statement": { "type": "string" },
+        "tier": { "$ref": "#/$defs/tier" },
+        "share_of_movement_pct": { "type": ["number", "null"] },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" } },
+        "tests": { "type": "array", "items": { "$ref": "#/$defs/falsificationTest" } }
+      }
+    },
+    "rejectedHypothesis": {
+      "type": "object",
+      "required": ["statement", "rejected_by", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "statement": { "type": "string" },
+        "rejected_by": { "enum": ["falsification_test", "no_evidence", "timing_mismatch", "magnitude_mismatch", "control_segment_moved_too"] },
+        "detail": { "type": "string" },
+        "test_id": { "type": ["string", "null"] }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["driver_id", "lever", "recommendation", "expected_impact", "owner", "confidence", "monitoring"],
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": { "type": "string" },
+        "lever": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "expected_impact": {
+          "type": "object",
+          "required": ["metric", "value", "basis"],
+          "additionalProperties": false,
+          "properties": {
+            "metric": { "type": "string" },
+            "value": { "type": "number" },
+            "basis": { "enum": ["recovered_gap", "historical_analogue", "elasticity_estimate"] }
+          }
+        },
+        "owner": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/tier" },
+        "monitoring": {
+          "type": "object",
+          "required": ["metric", "check_after_days", "success_threshold"],
+          "additionalProperties": false,
+          "properties": {
+            "metric": { "type": "string" },
+            "check_after_days": { "type": "integer" },
+            "success_threshold": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

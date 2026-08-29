@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glassbox.local/schemas/injection_manifest.schema.json",
+  "title": "GlassBox Injection Manifest (ground truth)",
+  "description": "FROZEN AT COMMIT. This file declares, for every scenario, what was planted in the synthetic data and what the correct answer is. It is committed BEFORE any engine code reads it - that commit hash is the pre-registration proof. If you edit a scenario's ground truth after seeing your engine's output, the benchmark is worthless and a judge who checks git log will find it.",
+  "type": "object",
+  "required": ["manifest_version", "generated_at", "seed", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "seed": { "type": "integer", "description": "RNG seed for data/generate.py. Same seed => byte-identical dataset => reproducible evaluation." },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "kpi", "focal_window", "expected_branch", "ground_truth", "tests_criterion", "difficulty"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^SC-[0-9]{2}$" },
+          "title": { "type": "string" },
+          "kpi": { "type": "string" },
+          "focal_window": {
+            "type": "object",
+            "required": ["start", "end"],
+            "additionalProperties": false,
+            "properties": {
+              "start": { "type": "string", "format": "date" },
+              "end": { "type": "string", "format": "date" }
+            }
+          },
+          "expected_branch": { "enum": ["answer", "abstention", "clarification", "no_alert"] },
+          "ground_truth": {
+            "type": "object",
+            "required": ["planted"],
+            "additionalProperties": false,
+            "properties": {
+              "planted": { "type": "boolean", "description": "False for negative controls - the movement exists but has no cause planted, or there is no movement at all." },
+              "true_segment": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
+              "true_cause_id": { "type": ["string", "null"] },
+              "true_cause_statement": { "type": ["string", "null"] },
+              "magnitude_pct": { "type": ["number", "null"] },
+              "shape": { "enum": ["step", "ramp", "spike", "decay", "none"] },
+              "spillover_segments": { "type": "array", "items": { "type": "object", "additionalProperties": { "type": "string" } } },
+              "evidence_document_ids": { "type": "array", "items": { "type": "string" } },
+              "confounder_cause_id": { "type": ["string", "null"], "description": "A rival cause deliberately co-timed with the true cause. The engine must demote it, not pick it." }
+            }
+          },
+          "tests_criterion": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Which Round 2 objective / prototype expectation IDs this scenario evidences. Feeds the traceability matrix."
+          },
+          "difficulty": { "enum": ["core", "hard", "adversarial"] },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glassbox.local/schemas/contract.schema.json",
+  "title": "GlassBox Semantic Contract",
+  "description": "FROZEN. A KPI's definition, its lineage, its access rules and its drivers, in one governed YAML file. This single artefact is the semantic layer, the access-control layer, the disambiguation vocabulary and - through drivers[].depends_on - the KPI dependency graph. Nothing in the engine may define a metric outside a contract.",
+  "type": "object",
+  "required": ["id", "version", "display_name", "owner", "definition", "grain", "sources", "dimensions", "detection", "drivers", "access", "glossary"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "version": { "type": "string" },
+    "display_name": { "type": "string" },
+    "owner": { "type": "string", "description": "A human team name. A metric with no owner is not a governed metric." },
+    "unit": { "enum": ["currency", "count", "ratio", "days"] },
+
+    "definition": {
+      "type": "object",
+      "required": ["plain_english", "sql", "includes", "excludes"],
+      "additionalProperties": false,
+      "properties": {
+        "plain_english": { "type": "string" },
+        "sql": { "type": "string", "description": "The ONLY place this metric's arithmetic is written. Stage 01 executes this; nothing else computes the metric." },
+        "includes": { "type": "array", "items": { "type": "string" } },
+        "excludes": { "type": "array", "items": { "type": "string" }, "description": "The exclusions are what make definition drift visible. 'Net revenue excludes cancelled orders' is the sentence SC-09 breaks." }
+      }
+    },
+
+    "grain": { "enum": ["day", "week", "month"] },
+
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "table", "expected_freshness_seconds"],
+        "additionalProperties": false,
+        "properties": {
+          "source_id": { "type": "string" },
+          "table": { "type": "string" },
+          "expected_freshness_seconds": { "type": "integer" },
+          "quality_checks": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "column", "cardinality_hint", "searchable"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "column": { "type": "string" },
+          "cardinality_hint": { "type": "integer" },
+          "searchable": { "type": "boolean", "description": "False means localization may not descend into this dimension." },
+          "synonyms": { "type": "array", "items": { "type": "string" }, "description": "Feeds intent parsing. 'the south', 'southern region' -> region=South. The clarification branch may only offer values that appear here or in the data." }
+        }
+      }
+    },
+
+    "detection": {
+      "type": "object",
+      "required": ["method", "seasonality", "min_history_periods", "materiality"],
+      "additionalProperties": false,
+      "properties": {
+        "method": { "enum": ["stl_residual_control", "seasonal_naive_zscore", "robust_zscore"] },
+        "seasonality": { "type": "array", "items": { "enum": ["dow", "week", "month", "festival_calendar"] } },
+        "min_history_periods": { "type": "integer", "description": "Below this, the best tier any claim can reach is HYPOTHESIS. Degradation is declared, not silent." },
+        "materiality": {
+          "type": "object",
+          "required": ["min_abs_impact", "min_z"],
+          "additionalProperties": false,
+          "properties": {
+            "min_abs_impact": { "type": "number", "description": "Dual threshold: a movement must be BOTH statistically surprising AND financially material to alert. This is what kills the 200-alerts-a-day failure mode." },
+            "min_z": { "type": "number" }
+          }
+        }
+      }
+    },
+
+    "drivers": {
+      "type": "array",
+      "description": "The decomposition identity and the dependency edges. Compiling every contract's drivers block at startup yields the KPI graph - that is the knowledge graph, and it is machine-readable because it lives here.",
+      "items": {
+        "type": "object",
+        "required": ["name", "relation", "depends_on"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "relation": { "enum": ["product", "sum", "ratio", "additive_decomposition"] },
+          "depends_on": { "type": "array", "items": { "type": "string" }, "description": "Other contract ids. Cycles are a startup error, not a runtime surprise." },
+          "levers": { "type": "array", "items": { "type": "string" }, "description": "Business actions that move this driver. Stage 07 may only recommend a lever listed here." }
+        }
+      }
+    },
+
+    "access": {
+      "type": "object",
+      "required": ["row_rules", "column_rules", "min_cell_size", "personas"],
+      "additionalProperties": false,
+      "properties": {
+        "row_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role", "predicate"],
+            "additionalProperties": false,
+            "properties": {
+              "role": { "type": "string" },
+              "predicate": { "type": "string", "description": "SQL predicate pushed into the query, not applied after. The role changes the computation." }
+            }
+          }
+        },
+        "column_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["column", "visible_to", "treatment"],
+            "additionalProperties": false,
+            "properties": {
+              "column": { "type": "string" },
+              "visible_to": { "type": "array", "items": { "type": "string" } },
+              "treatment": { "enum": ["visible", "masked", "hashed", "excluded"] }
+            }
+          }
+        },
+        "min_cell_size": { "type": "integer", "description": "Segments with fewer underlying records are rolled up to the parent level so no individual is inferable. Recorded in findings.security.cells_suppressed." },
+        "personas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["persona", "role", "default_grain", "narrative_style"],
+            "additionalProperties": false,
+            "properties": {
+              "persona": { "enum": ["cfo", "category_manager", "analyst"] },
+              "role": { "type": "string" },
+              "default_grain": { "enum": ["day", "week", "month"] },
+              "narrative_style": { "enum": ["executive", "operational", "technical"] },
+              "channels": { "type": "array", "items": { "enum": ["workspace", "chat", "email"] } }
+            }
+          }
+        }
+      }
+    },
+
+    "glossary": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Terms the narrator is allowed to use, with their plain-English gloss. Doubles as the UI tooltip source."
+    }
+  }
+}
