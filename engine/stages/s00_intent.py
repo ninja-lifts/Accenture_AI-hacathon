@@ -10,7 +10,13 @@ default, offline state - falls back to a deterministic keyword/synonym
 parser over the same compiled catalogue. Both paths are constrained to
 catalogue vocabulary only, which is the actual guarantee this stage makes;
 which one produced a given answer is an implementation detail, not something
-the guarantee depends on."""
+the guarantee depends on.
+
+That equivalence covers two paths that both succeeded. It does not cover a
+live call that was attempted and failed - a network error, a non-JSON
+response, an unexpected shape. That is a real failure, not an offline
+fallback, and it must not be silently absorbed into the same except clause
+as "no cache entry exists"; see run() below."""
 
 from __future__ import annotations
 
@@ -137,11 +143,24 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
     parsed: dict[str, Any] | None = None
     try:
         result = llm_client.complete("intent_parse", payload, ctx=ctx)
+    except llm_client.LLMCacheMiss:
+        # The legitimate offline path: no key configured and no cache entry
+        # for this exact payload. Nothing was attempted, nothing failed.
+        result = None
+
+    if result is None:
+        parsed = _deterministic_parse(question, ctx)
+    else:
         import json
 
+        # A call actually happened (live, or a cache hit) and returned
+        # something. If it doesn't parse as the shape prompts/intent_parse.md
+        # requires, that is a real failure of the call this run made, not an
+        # absence of one - it must not be silently treated as if no call had
+        # been attempted. Let it propagate: the harness records it as a
+        # scenario ERROR (not a batch abort) and the UI shows st.exception -
+        # both are "fail loudly", not "fail silently into a stale answer".
         parsed = json.loads(result.text)
-    except (llm_client.LLMCacheMiss, llm_client.LLMCallCapExceeded, ValueError, KeyError):
-        parsed = _deterministic_parse(question, ctx)
 
     status = parsed.get("status")
     if status == "resolved":

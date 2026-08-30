@@ -4,9 +4,19 @@ Sees no raw data - only the completed outcome object built by
 engine/pipeline.py (movement, drivers with their tiers already assigned,
 rejected hypotheses, the action). Turns it into persona-appropriate prose.
 Every numeral in the output must already exist in that object;
-engine/validator.py enforces it, and a failure regenerates once, then falls
-back to the template renderer below - which, being built directly from the
-same object, cannot introduce an unaccounted number by construction."""
+engine/validator.py enforces it, and a rejection regenerates (bounded by
+settings.max_validator_retries), then falls back to the template renderer
+below - which, being built directly from the same object, cannot introduce
+an unaccounted number by construction.
+
+Two different things can exhaust that retry budget: the validator correctly
+rejecting bad numbers (expected, telemetried via validator_retries, not an
+error), and a live call returning something that doesn't parse at all (a
+real failure). The first still falls back to the template silently, by
+design. The second raises instead of falling back - see run() - because a
+silently-rendered template is indistinguishable from a working live call to
+anyone reading the output, and this stage's provenance is exactly what the
+project promises never to misrepresent."""
 
 from __future__ import annotations
 
@@ -82,20 +92,44 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
     }[branch]
 
     narration = None
+    live_attempt_failed = False
     if branch in ("answer", "abstention"):
         payload = {"FINDINGS": outcome_draft, "PERSONA": persona}
+        ctx["telemetry"].setdefault("validator_retries", 0)
         for attempt in range(ctx["settings"].max_validator_retries):
             try:
                 result = llm_client.complete("narrate", payload, ctx=ctx)
+            except llm_client.LLMCacheMiss:
+                # The legitimate offline path: no key, no cache entry for
+                # this exact payload. Nothing was attempted this call.
+                break
+            try:
                 candidate = json.loads(result.text)
                 ok, unaccounted = validator.validate(candidate, outcome_draft)
-                ctx["telemetry"].setdefault("validator_retries", 0)
-                if ok:
-                    narration = candidate
-                    break
-                ctx["telemetry"]["validator_retries"] += 1
-            except (llm_client.LLMCacheMiss, llm_client.LLMCallCapExceeded, ValueError, KeyError):
+            except (ValueError, KeyError):
+                # The call succeeded but the response doesn't parse as
+                # prompts/narrate.md's contract - a real failure of a call
+                # this run actually made. Counted against the same retry
+                # budget as a validator rejection (a transient bad
+                # generation shouldn't abort the whole run on the first
+                # attempt), but tracked separately so that if every attempt
+                # fails this way, it is raised rather than silently
+                # rendered as an unlabeled template.
+                ok = False
+                live_attempt_failed = True
+            if ok:
+                narration = candidate
                 break
+            ctx["telemetry"]["validator_retries"] += 1
+
+        if narration is None and live_attempt_failed:
+            raise RuntimeError(
+                f"prompts/narrate.md produced {ctx['settings'].max_validator_retries} "
+                "consecutive unparseable/invalid live responses this run - falling back "
+                "to the template would silently hide a real live-call failure behind "
+                "output that looks like the normal offline path. Check the provider/"
+                "model configuration, or retry."
+            )
 
     if narration is None:
         narration = template_fn(outcome_draft, persona)
