@@ -1,18 +1,19 @@
 # One entry point per thing a judge might want to do.
 # `make reproduce` is the promise in the README - if it breaks, the submission breaks.
 
-.PHONY: help setup data freeze eval eval-live baseline app reproduce test fetch-rs fetch-psqueeze clean
+.PHONY: help setup data freeze eval eval-live baseline baseline-live app reproduce test fetch-rs fetch-psqueeze clean
 
 help:
-	@echo "setup      - install dependencies"
-	@echo "data       - generate the Meridian dataset from the committed manifest"
-	@echo "eval       - run the 17-scenario harness in REPLAY mode (forced - never billed), write eval/scorecard.md and eval/cost_receipt.md"
-	@echo "eval-live  - run the 17-scenario harness against a LIVE key (billed calls) - explicit opt-in only"
-	@echo "baseline   - run B1/B2/B3 baselines, write eval/baseline_scorecard.md"
-	@echo "app        - launch the UI locally"
-	@echo "test       - unit tests"
-	@echo "reproduce  - setup + data + eval + test. The single command in the README. Never makes a billed call."
-	@echo "fetch-rs   - clone RiskLoc for the external benchmark (not committed)"
+	@echo "setup         - install dependencies"
+	@echo "data          - generate the Meridian dataset from the committed manifest"
+	@echo "eval          - run the 15-scenario harness in REPLAY mode (forced - never billed), write eval/scorecard.md and eval/cost_receipt.md"
+	@echo "eval-live     - run the harness against a LIVE key (billed calls) - explicit opt-in only"
+	@echo "baseline      - run B1/B3 baselines in REPLAY mode (forced - never billed), write eval/baseline_scorecard.md"
+	@echo "baseline-live - run B1/B3 against a LIVE key (billed B3 calls, no cache) - explicit opt-in only"
+	@echo "app           - launch the UI locally"
+	@echo "test          - unit tests"
+	@echo "reproduce     - setup + data + eval + test. The single command in the README. Never makes a billed call."
+	@echo "fetch-rs      - clone RiskLoc for the external benchmark (not committed)"
 
 setup:
 	python -m pip install -r requirements.txt
@@ -34,7 +35,18 @@ eval-live:
 	GLASSBOX_REPLAY=0 python -m eval.harness --scenarios all --out eval/scorecard.md
 
 baseline:
-	python -m eval.harness --baseline --out eval/baseline_scorecard.md
+	GLASSBOX_REPLAY=1 python -m eval.harness --baseline --out eval/baseline_scorecard.md
+
+# Same reasoning as eval-live: separate, explicit opt-in so `make baseline`
+# itself can never surprise-bill a judge who happens to have a live key
+# configured. B3 has no replay cache (eval/baselines/run_all.py::run_b3
+# calls _call_live directly) - every run here is a fresh live call for every
+# scenario, not resumable the way eval-live is.
+baseline-live:
+	@echo "WARNING: baseline-live makes real, billed B3 calls against a live LLM provider for every scenario - not resumable, not a replay run."
+	@GLASSBOX_REPLAY=0 python -c "from engine import config; s = config.load(); print(f'  provider={s.llm_provider} model={s.llm_model or \"(unset)\"}')"
+	@echo "  approximate call count: up to 15 (one B3 prompt per non-retired scenario)"
+	GLASSBOX_REPLAY=0 python -m eval.harness --baseline --out eval/baseline_scorecard.md
 
 app:
 	streamlit run app/main.py
