@@ -174,6 +174,14 @@ def render_findings(findings: dict) -> None:
         st.json(findings["security"])
         st.caption(f"entitlements_hash: {findings['request']['principal']['entitlements_hash']}")
 
+        sources = findings.get("provenance", {}).get("sources", [])
+        if sources:
+            st.markdown("**Sources**")
+            for src in sources:
+                flags = src.get("quality_flags") or []
+                flag_text = f" ⚠️ {', '.join(flags)}" if flags else ""
+                st.caption(f"`{src['source_id']}` · as of {src['as_of']} · {src['row_count']:,} rows{flag_text}")
+
 
 def main() -> None:
     st.set_page_config(page_title="GlassBox", page_icon="🔍", layout="wide")

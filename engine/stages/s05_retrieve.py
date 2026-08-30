@@ -7,7 +7,14 @@ applied BEFORE scoring, not after:
      it, however well it matches on keywords. This is the first line of
      defence against SC-08's decoys; Stage 06's falsification tests (which
      find no supporting statistical signal for any of them) are the second -
-     defence in depth rather than relying on either alone."""
+     defence in depth rather than relying on either alone.
+
+If the embedding model can't be loaded (package missing, or no network for
+the one-time weights download) this stage degrades to BM25-only rather than
+failing the run - see _load_index's except clause. That degradation is
+recorded as a quality_flags entry on a "document_index" provenance source
+(findings.schema.json already allows this per-source; no schema change was
+needed) and printed to stderr, not just one or the other."""
 
 from __future__ import annotations
 
@@ -59,7 +66,35 @@ def _load_index(documents_path: str) -> dict[str, Any]:
 
         model = SentenceTransformer("all-MiniLM-L6-v2")
         embeddings = model.encode(embed_texts, show_progress_bar=False, normalize_embeddings=True)
-    except Exception:  # noqa: BLE001 - no network / model unavailable: degrade to BM25-only
+    except (ImportError, OSError) as exc:
+        # ImportError: the package isn't installed. OSError: the one-time
+        # model-weights download has no network to reach - this covers the
+        # overwhelming majority of real "offline" failures here, because
+        # requests/urllib3/huggingface_hub's connection, timeout, TLS and
+        # missing-local-file errors all subclass OSError in Python 3 (IOError
+        # is an alias for it). Both are genuinely meant to degrade rather than
+        # break the offline promise, so surfaced via provenance.sources'
+        # quality_flags below (schema already supports it - no schema change
+        # needed) rather than only to stderr.
+        #
+        # Deliberately NOT caught here: RuntimeError (e.g. a corrupted local
+        # cache failing to load into torch) and anything from a library-
+        # internal bug (TypeError/AttributeError/KeyError from a version
+        # mismatch). Those aren't "no network" - they're a real fault in an
+        # environment that has the package and can't be distinguished from a
+        # code bug without importing huggingface_hub/torch's internal
+        # exception types directly, which requirements.txt doesn't pin and
+        # rule 9 says not to add casually. Letting them propagate is the
+        # honest choice: a fault we can't confidently classify as "expected
+        # degradation" should fail loudly, not be silently absorbed into the
+        # same path as "no network."
+        import sys
+
+        print(
+            f"[s05_retrieve] embedding model unavailable ({type(exc).__name__}: {exc}) - "
+            "degrading to BM25-only retrieval for this run.",
+            file=sys.stderr,
+        )
         model = None
 
     index = {"docs": docs, "bm25": bm25, "model": model, "embeddings": embeddings}
@@ -115,6 +150,17 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
         documents_path = str(Path(settings.data_dir) / "documents.jsonl")
         index = _load_index(documents_path)
         docs = index["docs"]
+
+        mtime = Path(documents_path).stat().st_mtime
+        ctx.setdefault("sources", []).append(
+            {
+                "source_id": "document_index",
+                "as_of": dt.datetime.fromtimestamp(mtime, dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z",
+                "freshness_seconds": max(0, int(dt.datetime.now(dt.timezone.utc).timestamp() - mtime)),
+                "row_count": len(docs),
+                "quality_flags": ["embeddings_unavailable_bm25_only"] if index["model"] is None else [],
+            }
+        )
 
         window = ctx["window"]
         focal_start = dt.date.fromisoformat(window["focal_start"])

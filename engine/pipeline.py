@@ -73,7 +73,7 @@ _TRACE_KEYS = {
     "s02_detect": ["history_periods_ok", "movement"],
     "s03_localize": ["localization"],
     "s04_decompose": ["decomposition"],
-    "s05_retrieve": ["evidence"],
+    "s05_retrieve": ["evidence", "sources"],
     "s06_falsify": ["candidates", "rejected_hypotheses"],
 }
 
