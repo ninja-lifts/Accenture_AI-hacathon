@@ -951,6 +951,116 @@ software does not work that way and every judge knows it.
   cost real money to find and fix (~$0.05 across the Gemini probes in this
   entry) - disclosed, not hidden, per this file's own rules.
 
+## 023 — Gemini's thinking-token budget needed a flat floor, not just a multiplier
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `58e8f4c`
+
+- **Evidence:** Running SC-04 live (not the trivial one-word test entry 022
+  was verified against): the response truncated mid-string -
+  `"text": "wide Audio downturn hypothesis..."` with no closing quote, no
+  closing braces. `tokens_out=111` against a 2,900-token
+  `maxOutputTokens` budget (`max(900*3, 900+2000)`, entry 022's formula).
+- **Problem:** Thinking-token consumption is not proportional to the
+  declared output size the way the multiplier formula assumed. A trivial
+  "reply with one word" prompt spent 90 thinking tokens; a real,
+  moderately-complex narrate prompt spent roughly 2,700-2,800 of the same
+  2,900-token budget, leaving 111 tokens for the actual answer and cutting
+  it off mid-generation - genuinely incomplete JSON, a different failure
+  from the fenced-wrapper case entry 022's `_clean_gemini_json_text`
+  handles. Both retry attempts (the first live, the second via `force_live`)
+  hit this identically, exhausting the retry budget and correctly raising
+  `RuntimeError` rather than silently falling back to the template - the
+  entry 013/014 guard working exactly as designed, on a failure mode from a
+  provider that did not exist when it was written. Side effect: the
+  truncated response got cached (writes are unconditional on any live
+  response, valid or not), and a later `pytest` run in replay mode
+  correctly refused to silently accept the corrupted cached text as a valid
+  narration - not a new bug, the schema-validation test doing its job on
+  cache content this session's own experimentation had corrupted.
+- **Decision:** Raise the budget with a large flat floor
+  (`max(declared*3, declared+2000, 8000)`) rather than a bigger multiplier
+  alone, since thinking cost does not scale simply with the declared output
+  size. Deleted the one corrupted cache entry rather than leave it for a
+  future run to trip over.
+- **Change:** `engine/llm_client.py::_call_live_gemini` - budget floor
+  raised to 8,000 tokens; docstring records the real measured ratio.
+- **Result:** `pytest` 13/13 after deleting the corrupted entry. Re-ran
+  SC-04 live: complete, valid JSON, correct branch (`answer`), `tokens_in=3933
+  tokens_out=628`. `pass=False` on localization precision only (same benign
+  miss category as SC-05/SC-10/SC-11/SC-14/SC-16 throughout this project's
+  history) - not a validator or parsing failure.
+
+## 024 — The only two stages that ever make an LLM call were the only two never timed
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `e67f8ab`
+
+- **Evidence:** The live batch's own `eval/cost_receipt.md` reported
+  `latency p50/p95 = 1,078ms/1,927ms`. The same batch's raw harness logs
+  show real per-call elapsed times of 25,000-91,000ms. A forty-to-fifty-fold
+  discrepancy, not a rounding difference.
+- **Problem:** `telemetry.total_ms` is `sum(stage_timings_ms.values())`,
+  nothing else. `engine/stages/s01_define.py` through `s06_falsify.py` - six
+  of eight stages - wrap their `run()` body in
+  `engine/telemetry.py::stage()`. `s00_intent.py` and `s07_narrate.py` - the
+  *only two stages in the whole pipeline that ever call
+  `llm_client.complete()`* - never did, for the project's entire history.
+  Invisible in replay mode, where a cache read is near-instant regardless of
+  whether it's timed, which is exactly why nobody had caught it before this
+  session ran the pipeline live and actually looked at real per-call timing
+  against what the receipt claimed.
+- **Decision:** Wrap both. `s00_intent.py`'s existing early return for a
+  non-`user_question` trigger stays outside the wrap (most scenarios never
+  touch this stage at all; recording a near-zero entry for all of them
+  would be a different, unrequested behaviour change). `s07_narrate.py`
+  wraps unconditionally, matching the six baseline stages, since it runs
+  for every branch regardless of whether an LLM call happens.
+- **Change:** `engine/stages/s00_intent.py`, `engine/stages/s07_narrate.py`
+  (both wrapped), `engine/telemetry.py::stage()` (docstring records why this
+  matters for every future stage). `eval/cost_receipt.md` - a correction
+  appended under the already-generated live numbers, not a rewrite of them
+  (this file's own rule: never edit an old entry to look better).
+- **Result:** `pytest` 13/13. Verified structurally in replay mode:
+  `07_narrate` now appears in `stage_timings_ms` with a realistic 3.5ms for
+  a cache-hit read - not conflated with `05_retrieve`'s 18.7s
+  first-process embedding-model load, which had been the only other large
+  number in the same breakdown. A future live run's cost receipt will
+  report genuine end-to-end latency; this session's already-recorded one
+  carries the real number as a correction instead (entry 025).
+
+## 025 — First full live recording: 15 scored scenarios, two providers, one Groq quota wall
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `8e650ce`
+
+- **Evidence:** Three different Groq API keys 429'd on the first live call
+  each (entry 022) - consistent with an account-level free-tier quota
+  (`openai/gpt-oss-120b`: 8K TPM confirmed empirically and matching Groq's
+  published limit, but also 200K tokens/day, shared across keys on the same
+  account) rather than a per-key one. Recording the full batch meant
+  finishing on Gemini rather than waiting on an unknown reset window.
+- **Problem:** Nothing left to fix by this point - entries 022-024 already
+  closed the real gaps (JSON fencing, thinking-token budget, latency
+  timing). This entry is the actual deliverable those existed to produce:
+  a genuine, complete, live-recorded run of the 15 non-retired scenarios.
+- **Decision:** Record what's real rather than force single-provider
+  purity. 12 of 19 total live calls this session are Groq-sourced (from
+  before the quota wall), 7 are Gemini-sourced (after) - the replay cache
+  is keyed by `(prompt_id, prompt_version, payload_hash)`, not by provider,
+  and a captured response is real evidence regardless of which real
+  provider produced it. Scenarios already validly cached from Groq
+  (SC-01, SC-06, SC-08, SC-09, SC-13) were not re-called on Gemini just for
+  uniformity - that would spend real quota to replace a real capture with
+  another real capture, for no evidentiary gain.
+- **Change:** `eval/replay_cache/narrate/` (18 entries) and
+  `eval/replay_cache/intent_parse/` (1 entry, SC-17) committed.
+  `eval/scorecard.md`, `eval/cost_receipt.md` regenerated from the real run.
+- **Result:** **7/15 pass, 0/15 hallucinated causes** - the headline number
+  holds under real live narration, not just replay-mode template rendering.
+  All 8 misses are imprecise-localization or conservative-abstention, the
+  same benign categories this project has shown throughout; nothing new or
+  concerning surfaced by finally going live end to end. 19 real calls
+  total this session: 71,341 input + 21,688 output tokens. Real dollar
+  cost: **$0** (both providers' free tiers - genuinely, not a rounding of
+  something small). Illustrative cost per `engine/telemetry.py`'s
+  placeholder rate (not a provider invoice - see that file's own docstring):
+  $0.5393 combined. Next: B3 baseline, live.
+
 ---
 
 <!--
