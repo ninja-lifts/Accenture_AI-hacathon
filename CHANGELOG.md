@@ -590,6 +590,92 @@ software does not work that way and every judge knows it.
   the wall-clock budget, in a scenario where the old code would have hung
   the same way it did during the run this entry is about.
 
+## 017 — Tests inherited live mode from .env and made 12 minutes of billed calls; tests now force replay unconditionally
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `20ab098`
+
+- **Evidence:** Immediately after committing the hang fix (entry 016), ran a
+  plain `pytest -q` with no env override to check for regressions. `.env`
+  (created this session to run the live harness) had `GLASSBOX_REPLAY=0` and
+  a real key. The run took 711s instead of the usual ~30-60s and failed 2 of
+  8 tests with a live `TimeoutError` wrapping `HTTPError: 429 Too Many
+  Requests` (`Retry-After` ~300s) from a real narrate call `pytest` had no
+  business making.
+- **Problem:** `engine/config.py`'s `Settings` dataclass reads
+  `GLASSBOX_REPLAY` as a *class-level field default* via `os.getenv(...)`,
+  evaluated once when the class body executes (i.e. on first import of
+  `engine.config`) - `config.load()` is just `Settings()`, it doesn't
+  re-read the environment per call. Nothing in the test suite ever set or
+  forced `GLASSBOX_REPLAY` itself; it silently inherited whatever `.env`/the
+  ambient shell had. That was invisible for the entire session up to this
+  point, because `.env` didn't exist yet - the moment it was created with a
+  live key, every subsequent `pytest` invocation silently went live too,
+  including ones run purely to check for code regressions after a change.
+- **Decision:** Tests must be hermetic regardless of what a developer's or
+  judge's `.env` happens to contain - a suite whose behaviour (and cost)
+  depends on ambient secrets isn't trustworthy. Force `GLASSBOX_REPLAY=1` at
+  `tests/conftest.py` MODULE level, not inside a fixture - it has to run
+  before `engine.config` is first imported anywhere in the process, since
+  its field defaults are computed at import time; a fixture body runs too
+  late if anything already imported `engine.config` by then. Backstop that
+  with a session-scoped autouse fixture monkeypatching
+  `engine.llm_client._call_live` to raise `AssertionError` if ever called -
+  independent of the env-var-timing fix, so an import-order surprise stops
+  the network call rather than silently going live again.
+- **Change:** new `tests/conftest.py`.
+- **Result:** `pytest` 8/8 in 27s with `.env` still live-configured
+  (`GLASSBOX_REPLAY=0`, real key, unchanged) - confirmed by re-running with
+  no env override after adding the fixture; the same conditions took 711s
+  and failed 2 tests on a real 429 before this fix.
+
+## 018 — Two more guards against a repeat: a forced-replay Makefile default, and a resumable replay cache
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `20ab098`
+
+- **Evidence:** Same incident as entry 017, two more angles on it. (1)
+  `make eval`/`make reproduce` had no opinion on `GLASSBOX_REPLAY` at all -
+  exactly the same inheritance bug as the test suite, except `make
+  reproduce` is the literal command `README.md` promises a judge. (2)
+  Restarting the live harness after swapping API keys (session-internal, not
+  committed - the first key hit a rate limit) began *overwriting* the 10
+  already-captured real responses from the first, interrupted run with fresh
+  live calls, because `complete()` unconditionally called live whenever
+  `use_live` was true, regardless of whether a cache entry for that exact
+  payload already existed.
+- **Problem:** (1) is entry 017's bug, one layer up - a judge running the
+  promised command should never depend on what happens to be in their
+  environment. (2) means a real interruption partway through a batch (a 429,
+  the hang this whole thread of entries is about, anything) doesn't just
+  delay the run - re-running it re-bills every call already made, not just
+  the ones still outstanding.
+- **Decision:** (1) `make eval` (and therefore `make reproduce`, which
+  depends on it) now forces `GLASSBOX_REPLAY=1` in the recipe itself,
+  overriding any ambient/`.env` value. A live run gets an explicit, separate
+  `make eval-live` target that overrides to `GLASSBOX_REPLAY=0` (also
+  regardless of ambient state) and prints the configured provider/model and
+  an approximate call count before it starts. (2) `complete()` now checks
+  the cache *before* deciding whether to go live - live mode becomes "call
+  live for anything not yet captured," not "always call live and overwrite
+  what's there." Replay-cache writes were already incremental (verified
+  earlier this session: a killed live process left the 10 responses it had
+  already made intact on disk, written per-response, not batched at the end)
+  - this closes the other half of resumability, skipping calls already on
+  disk instead of only not losing the ones that complete.
+- **Change:** `Makefile` (`eval` forces `GLASSBOX_REPLAY=1`; new
+  `eval-live` target with a provider/model/call-count warning);
+  `engine/llm_client.py::complete()` (cache-exists check moved before the
+  live/replay branch; a stderr line notes a resumed call). **Known related
+  gap, left alone because it wasn't part of what was asked:** `make
+  baseline` (B3) has neither a forced-replay default nor any caching at all
+  - `eval/baselines/run_all.py::run_b3` calls `_call_live` directly, bypassing
+  `complete()` (and its cache) entirely, so every `--baseline` run calls live
+  unconditionally and uncached regardless of what already exists.
+- **Result:** `pytest` 8/8 (unaffected - replay mode already skipped the
+  live branch entirely, so checking the cache first is a no-op there).
+  Resumability against a genuine already-cached live payload is verified
+  structurally and by code review here, not yet exercised against a real
+  duplicate live call - the live SC-01/17-scenario runs immediately
+  following this entry are the real-world check, and will be reported
+  honestly either way.
+
 ---
 
 <!--
