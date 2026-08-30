@@ -1,0 +1,5 @@
+{
+  "text": "{\n  \"status\": \"clarification\",\n  \"kpi\": null,\n  \"segment\": {\n    \"region\": \"South\"\n  },\n  \"window\": null,\n  \"clarification\": {\n    \"question\": \"Which metric do you mean by 'sales'?\",\n    \"ambiguity_type\": \"kpi_ambiguous\",\n    \"options\": [\n      {\n        \"label\": \"Net Revenue (after returns and discounts)\",\n        \"resolves_to\": {\n          \"kpi\": \"net_revenue\"\n        }\n      },\n      {\n        \"label\": \"Orders (count of distinct orders placed)\",\n        \"resolves_to\": {\n          \"kpi\": \"orders\"\n        }\n      }\n    ]\n  },\n  \"unmapped_terms\": []\n}",
+  "tokens_in": 1777,
+  "tokens_out": 187
+}

@@ -1,0 +1,5 @@
+{
+  "text": "{\n  \"headline\": \"Net Revenue fell 13.3% in the week to 26\u202fJuly\u202f2026.\",\n  \"sentences\": [\n    { \"text\": \"Net Revenue fell 13.3% in the week ending 26\u202fJuly\u202f2026, representing a material decline that requires immediate financial review.\", \"tier_from\": \"abstention\" },\n    { \"text\": \"No driver met the evidence floor, so the specific cause of the decline cannot be confirmed.\", \"tier_from\": \"abstention\" },\n    { \"text\": \"The hypothesis that the movement was localized to the Web channel was falsified (control segment moved -11.0%).\", \"tier_from\": \"abstention.ruled_out[0]\" },\n    { \"text\": \"A human investigation by the Analytics team is needed to determine corrective actions.\", \"tier_from\": \"abstention.referral\" }\n  ]\n}",
+  "tokens_in": 1275,
+  "tokens_out": 686
+}

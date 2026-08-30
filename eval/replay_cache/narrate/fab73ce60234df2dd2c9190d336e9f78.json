@@ -1,0 +1,5 @@
+{
+  "text": "{\n  \"headline\": \"Net Revenue fell -23.5% (Rs 35 lakh) in the week to 14 Aug.\",\n  \"sentences\": [\n    {\n      \"text\": \"The Audio category in the South region accounts for 77.8% of the overall decline \u2013 Rs 27.24 lakh.\",\n      \"tier_from\": \"drivers[0]\"\n    },\n    {\n      \"text\": \"Within the South segment's own decline, a volume shortfall of Rs 12.9 lakh \u2013 96.7% of it \u2013 was the dominant driver.\",\n      \"tier_from\": \"decomposition\"\n    },\n    {\n      \"text\": \"The broader category\u2011wide Audio movement was ruled out as a confound by falsification testing.\",\n      \"tier_from\": \"rejected_hypotheses[0]\"\n    },\n    {\n      \"text\": \"Action: increase paid marketing spend to recover the Rs 35 lakh gap, owned by Finance Operations.\",\n      \"tier_from\": \"action\"\n    },\n    {\n      \"text\": \"Monitor net revenue for two weeks; success is defined as recovery to within 2% of the expected baseline.\",\n      \"tier_from\": \"action\"\n    }\n  ]\n}",
+  "tokens_in": 4094,
+  "tokens_out": 1173
+}

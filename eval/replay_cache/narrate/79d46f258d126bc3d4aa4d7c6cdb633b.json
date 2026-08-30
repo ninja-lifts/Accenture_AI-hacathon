@@ -1,0 +1,5 @@
+{
+  "text": "{\n  \"headline\": \"Net Revenue rose 1.2% (Rs 25.7 lakh) in the week to 3 May.\",\n  \"sentences\": [\n    {\n      \"text\": \"The South region accounts for 154.8% of the overall increase, contributing Rs 39.7 lakh.\",\n      \"tier_from\": \"localization[0]\"\n    },\n    {\n      \"text\": \"Movement localized to the South region.\",\n      \"tier_from\": \"drivers[0]\"\n    },\n    {\n      \"text\": \"Within the increase, volume contributed Rs 21.7 lakh, representing 54.2% of the rise.\",\n      \"tier_from\": \"decomposition[0]\"\n    },\n    {\n      \"text\": \"Action: Investigate the South\u2011region movement via paid marketing spend, expected to recover Rs 25.7 lakh; owned by Finance Operations.\",\n      \"tier_from\": \"action\"\n    }\n  ]\n}",
+  "tokens_in": 3281,
+  "tokens_out": 1330
+}
