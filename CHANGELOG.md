@@ -881,6 +881,76 @@ software does not work that way and every judge knows it.
   change meant to help - exactly the discipline `CLAUDE.md` asks this
   project to keep applying to itself, not just to the model's output.
 
+## 022 — A third provider adapter, added under duress: Groq's account-level rate limit forced Gemini, which surfaced three more real quirks
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `0d48e68`
+
+- **Evidence:** Three different Groq keys 429'd on the very first live call
+  each, in a tight window - not a per-key exhaustion pattern, an
+  account-level (or IP-level) one that swapping keys can't route around.
+  Rather than wait on an unknown reset window, added Gemini as a third
+  provider (Google AI Studio's `generateContent` REST API) - proving the
+  vendor-neutral design a second time, the same way entry 008 added Groq
+  alongside Anthropic. Every one of the three quirks below was found by
+  actually calling the real endpoint, not anticipated in advance.
+- **Problem, one:** the configured model (`gemini-2.0-flash`) is no longer
+  available - the API's own 404 named the replacement
+  (`gemini-3.6-flash`). **Two:** that model thinks by default with no
+  documented way to turn it off - `generationConfig.thinkingConfig:
+  {thinkingBudget: 0}` is rejected outright with a 400 - and a trivial
+  one-word prompt still spent 90 tokens on `thoughtsTokenCount` before the
+  visible answer; under a normal `max_output_tokens` budget the entire
+  allowance goes to thinking and the visible response comes back empty
+  (`finishReason: MAX_TOKENS`, `content: {}`) - the identical failure shape
+  Groq's `gpt-oss-120b` has (entry 008/009). **Three:** even with
+  `responseMimeType: "application/json"` set, a real narrate-shaped call
+  returned the JSON wrapped in a markdown code fence with prose *after* it
+  ("Let's count sentences: exactly 7 sentences in the `sentences` array.") -
+  `json.loads` would have failed on that verbatim, indistinguishable from a
+  genuine parse failure. **Four, found only after fixing three:** the
+  now-parseable response used `tier_from: "answer.localization[0]"`, not
+  the `drivers[0]` convention `prompts/narrate.md`'s worked example shows -
+  a reasonable pointer into the same findings object, just not the one
+  exact string entry 020's scope-check regex matched, which meant that
+  specific safety net silently would not have engaged for a Gemini
+  response making the same misattribution mistake it exists to catch.
+- **Decision:** Fix all four for real, not route around them.
+  `_call_live_gemini` budgets generously (`max(declared*3, declared+2000)`,
+  same formula as Groq's reasoning-model bump - a matching failure mode
+  gets the matching fix) since disabling thinking isn't available.
+  JSON-fence unwrapping is scoped narrowly to the Gemini adapter itself
+  (strip a leading fence, take the first complete JSON value via
+  `json.JSONDecoder.raw_decode` - which naturally ignores anything trailing
+  it, no need to locate a closing fence) and falls back to the original
+  text unchanged if it doesn't apply, so a genuinely broken response still
+  goes through `s07_narrate.py`'s existing, already-tested
+  retry/raise-loudly path rather than a new one. The `tier_from` fix is
+  the opposite of narrow on purpose: broadened
+  `engine/validator.py`'s pattern from `drivers[N]` alone to
+  `(?:answer\.)?(?:drivers|localization|decomposition)\[N\]`, since the
+  underlying misattribution risk is the same regardless of which per-segment
+  array a model's pointer happens to name, or whether it prefixes `answer.` -
+  general to the *shape* of a reasonable pointer, not to one provider's
+  specific string.
+- **Change:** `engine/llm_client.py` - `_call_live_gemini` (new adapter,
+  registered in `_LIVE_ADAPTERS`), `_clean_gemini_json_text` (fence-stripping,
+  provider-scoped). `engine/validator.py` - `_DRIVER_TIER_FROM_RE` renamed
+  `_SEGMENT_TIER_FROM_RE`, broadened pattern, docstrings updated. New test:
+  `test_localization_pointer_tier_from_also_rejects_unscoped_headline_numbers`.
+  `.env` (not committed - gitignored): `GLASSBOX_LLM_PROVIDER=gemini`,
+  `GLASSBOX_LLM_MODEL=gemini-3.6-flash`.
+- **Result:** `pytest` 13/13. Verified end to end against SC-01's real
+  outcome_draft (bypassing `complete()`'s cache so the existing good Groq
+  capture wasn't overwritten): clean, valid JSON; headline stated the
+  unscoped category movement; the localization-sourced sentence correctly
+  used South's own Rs 27.24 lakh / 77.8% - not the headline's Rs 35 lakh /
+  23.5% - despite using the `answer.localization[0]` pointer convention the
+  original entry-020 regex would have missed. `tokens_in=4883
+  tokens_out=113 cost=$0.01634` (Gemini's own thinking tokens aren't
+  separately billed-reported here - `candidatesTokenCount` only, matching
+  what the API itself calls the visible-output count). One live regression
+  cost real money to find and fix (~$0.05 across the Gemini probes in this
+  entry) - disclosed, not hidden, per this file's own rules.
+
 ---
 
 <!--
