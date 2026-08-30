@@ -24,6 +24,7 @@ import json
 from typing import Any
 
 from engine import llm_client, validator
+from engine.telemetry import stage
 
 
 def _template_answer(outcome_draft: dict[str, Any], persona: str) -> dict[str, Any]:
@@ -124,66 +125,67 @@ def _trim_for_narration(outcome_draft: dict[str, Any]) -> dict[str, Any]:
 
 
 def run(ctx: dict[str, Any]) -> dict[str, Any]:
-    branch = ctx["branch"]
-    outcome_draft = ctx["outcome_draft"]
-    persona = ctx["persona"]
+    with stage("07_narrate", ctx["telemetry"]):
+        branch = ctx["branch"]
+        outcome_draft = ctx["outcome_draft"]
+        persona = ctx["persona"]
 
-    template_fn = {
-        "answer": _template_answer,
-        "abstention": _template_abstention,
-        "clarification": _template_clarification,
-    }[branch]
+        template_fn = {
+            "answer": _template_answer,
+            "abstention": _template_abstention,
+            "clarification": _template_clarification,
+        }[branch]
 
-    narration = None
-    live_attempt_failed = False
-    if branch in ("answer", "abstention"):
-        payload = {"FINDINGS": _trim_for_narration(outcome_draft), "PERSONA": persona}
-        ctx["telemetry"].setdefault("validator_retries", 0)
-        for attempt in range(ctx["settings"].max_validator_retries):
-            try:
-                # force_live on retries: prompts/narrate.md runs at
-                # temperature 0.2 specifically so a rejected attempt has a
-                # real chance at a different result - the payload is
-                # identical across attempts (same outcome_draft/persona), so
-                # without this every attempt after the first would just
-                # replay attempt 1's cached (already-rejected) text via the
-                # resumable-cache path. See engine/llm_client.py::complete's
-                # own docstring and CHANGELOG.md entry 020.
-                result = llm_client.complete("narrate", payload, ctx=ctx, force_live=(attempt > 0))
-            except llm_client.LLMCacheMiss:
-                # The legitimate offline path: no key, no cache entry for
-                # this exact payload. Nothing was attempted this call.
-                break
-            try:
-                candidate = json.loads(result.text)
-                ok, unaccounted = validator.validate(candidate, outcome_draft)
-            except (ValueError, KeyError):
-                # The call succeeded but the response doesn't parse as
-                # prompts/narrate.md's contract - a real failure of a call
-                # this run actually made. Counted against the same retry
-                # budget as a validator rejection (a transient bad
-                # generation shouldn't abort the whole run on the first
-                # attempt), but tracked separately so that if every attempt
-                # fails this way, it is raised rather than silently
-                # rendered as an unlabeled template.
-                ok = False
-                live_attempt_failed = True
-            if ok:
-                narration = candidate
-                break
-            ctx["telemetry"]["validator_retries"] += 1
+        narration = None
+        live_attempt_failed = False
+        if branch in ("answer", "abstention"):
+            payload = {"FINDINGS": _trim_for_narration(outcome_draft), "PERSONA": persona}
+            ctx["telemetry"].setdefault("validator_retries", 0)
+            for attempt in range(ctx["settings"].max_validator_retries):
+                try:
+                    # force_live on retries: prompts/narrate.md runs at
+                    # temperature 0.2 specifically so a rejected attempt has a
+                    # real chance at a different result - the payload is
+                    # identical across attempts (same outcome_draft/persona), so
+                    # without this every attempt after the first would just
+                    # replay attempt 1's cached (already-rejected) text via the
+                    # resumable-cache path. See engine/llm_client.py::complete's
+                    # own docstring and CHANGELOG.md entry 020.
+                    result = llm_client.complete("narrate", payload, ctx=ctx, force_live=(attempt > 0))
+                except llm_client.LLMCacheMiss:
+                    # The legitimate offline path: no key, no cache entry for
+                    # this exact payload. Nothing was attempted this call.
+                    break
+                try:
+                    candidate = json.loads(result.text)
+                    ok, unaccounted = validator.validate(candidate, outcome_draft)
+                except (ValueError, KeyError):
+                    # The call succeeded but the response doesn't parse as
+                    # prompts/narrate.md's contract - a real failure of a call
+                    # this run actually made. Counted against the same retry
+                    # budget as a validator rejection (a transient bad
+                    # generation shouldn't abort the whole run on the first
+                    # attempt), but tracked separately so that if every attempt
+                    # fails this way, it is raised rather than silently
+                    # rendered as an unlabeled template.
+                    ok = False
+                    live_attempt_failed = True
+                if ok:
+                    narration = candidate
+                    break
+                ctx["telemetry"]["validator_retries"] += 1
 
-        if narration is None and live_attempt_failed:
-            raise RuntimeError(
-                f"prompts/narrate.md produced {ctx['settings'].max_validator_retries} "
-                "consecutive unparseable/invalid live responses this run - falling back "
-                "to the template would silently hide a real live-call failure behind "
-                "output that looks like the normal offline path. Check the provider/"
-                "model configuration, or retry."
-            )
+            if narration is None and live_attempt_failed:
+                raise RuntimeError(
+                    f"prompts/narrate.md produced {ctx['settings'].max_validator_retries} "
+                    "consecutive unparseable/invalid live responses this run - falling back "
+                    "to the template would silently hide a real live-call failure behind "
+                    "output that looks like the normal offline path. Check the provider/"
+                    "model configuration, or retry."
+                )
 
-    if narration is None:
-        narration = template_fn(outcome_draft, persona)
+        if narration is None:
+            narration = template_fn(outcome_draft, persona)
 
-    ctx["narration"] = narration
-    return ctx
+        ctx["narration"] = narration
+        return ctx

@@ -19,7 +19,17 @@ _RATES_PER_1K: dict[str, tuple[float, float]] = {
 
 @contextlib.contextmanager
 def stage(name: str, sink: dict[str, Any]):
-    """Time a stage into sink['stage_timings_ms'][name]."""
+    """Time a stage into sink['stage_timings_ms'][name].
+
+    Every stage must call this - `total_ms` (and therefore every latency
+    number this project ever reports) is `sum(stage_timings_ms.values())`,
+    nothing more. engine/stages/s00_intent.py and s07_narrate.py went
+    without it for the whole project's history (CHANGELOG.md): invisible in
+    replay mode, where a cache read is near-instant regardless, but it meant
+    every reported latency silently excluded the two stages that make live
+    LLM calls - the ones actually slow enough to matter. Found by running
+    live end to end and comparing the receipt's own numbers (~1s) against
+    real per-call elapsed time in the logs (25-91s)."""
     sink.setdefault("stage_timings_ms", {})
     start = time.perf_counter()
     try:

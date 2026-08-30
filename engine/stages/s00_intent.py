@@ -25,6 +25,7 @@ import re
 from typing import Any
 
 from engine import llm_client
+from engine.telemetry import stage
 
 # Terms not literally present in any contract's synonyms but genuinely
 # ambiguous between two KPIs - SC-17's "sales" is the canonical example. Kept
@@ -133,48 +134,49 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
     if ctx["trigger"] != "user_question":
         return ctx
 
-    question = ctx["raw_question"] or ""
-    payload = {
-        "CATALOGUE": ctx["catalogue"],
-        "TODAY": (ctx.get("today") or dt.date.today()).isoformat(),
-        "QUESTION": question,
-    }
-
-    parsed: dict[str, Any] | None = None
-    try:
-        result = llm_client.complete("intent_parse", payload, ctx=ctx)
-    except llm_client.LLMCacheMiss:
-        # The legitimate offline path: no key configured and no cache entry
-        # for this exact payload. Nothing was attempted, nothing failed.
-        result = None
-
-    if result is None:
-        parsed = _deterministic_parse(question, ctx)
-    else:
-        import json
-
-        # A call actually happened (live, or a cache hit) and returned
-        # something. If it doesn't parse as the shape prompts/intent_parse.md
-        # requires, that is a real failure of the call this run made, not an
-        # absence of one - it must not be silently treated as if no call had
-        # been attempted. Let it propagate: the harness records it as a
-        # scenario ERROR (not a batch abort) and the UI shows st.exception -
-        # both are "fail loudly", not "fail silently into a stale answer".
-        parsed = json.loads(result.text)
-
-    status = parsed.get("status")
-    if status == "resolved":
-        ctx["kpi_id"] = parsed["kpi"]
-        ctx["segment"] = parsed.get("segment") or {}
-        ctx["window"] = parsed.get("window") or _resolve_default_window(ctx)
-    else:
-        clar = parsed["clarification"]
-        ctx["route"] = "clarification"
-        ctx["clarification"] = {
-            "question": clar["question"],
-            "ambiguity_type": clar["ambiguity_type"],
-            "options": clar["options"],
-            "vocabulary_source": parsed.get("vocabulary_source", []),
+    with stage("00_intent", ctx["telemetry"]):
+        question = ctx["raw_question"] or ""
+        payload = {
+            "CATALOGUE": ctx["catalogue"],
+            "TODAY": (ctx.get("today") or dt.date.today()).isoformat(),
+            "QUESTION": question,
         }
 
-    return ctx
+        parsed: dict[str, Any] | None = None
+        try:
+            result = llm_client.complete("intent_parse", payload, ctx=ctx)
+        except llm_client.LLMCacheMiss:
+            # The legitimate offline path: no key configured and no cache entry
+            # for this exact payload. Nothing was attempted, nothing failed.
+            result = None
+
+        if result is None:
+            parsed = _deterministic_parse(question, ctx)
+        else:
+            import json
+
+            # A call actually happened (live, or a cache hit) and returned
+            # something. If it doesn't parse as the shape prompts/intent_parse.md
+            # requires, that is a real failure of the call this run made, not an
+            # absence of one - it must not be silently treated as if no call had
+            # been attempted. Let it propagate: the harness records it as a
+            # scenario ERROR (not a batch abort) and the UI shows st.exception -
+            # both are "fail loudly", not "fail silently into a stale answer".
+            parsed = json.loads(result.text)
+
+        status = parsed.get("status")
+        if status == "resolved":
+            ctx["kpi_id"] = parsed["kpi"]
+            ctx["segment"] = parsed.get("segment") or {}
+            ctx["window"] = parsed.get("window") or _resolve_default_window(ctx)
+        else:
+            clar = parsed["clarification"]
+            ctx["route"] = "clarification"
+            ctx["clarification"] = {
+                "question": clar["question"],
+                "ambiguity_type": clar["ambiguity_type"],
+                "options": clar["options"],
+                "vocabulary_source": parsed.get("vocabulary_source", []),
+            }
+
+        return ctx
