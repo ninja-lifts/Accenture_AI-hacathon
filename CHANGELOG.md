@@ -406,6 +406,79 @@ software does not work that way and every judge knows it.
 
 ---
 
+## 013 — Stage 00 absorbed a live intent-parse failure into the same fallback path as "no key configured"
+**Date:** 2026-08-30 · **Phase:** 5 · **Commit:** `465bebb`
+
+- **Evidence:** `engine/stages/s00_intent.py::run()` wrapped both
+  `llm_client.complete("intent_parse", ...)` and the subsequent
+  `json.loads(result.text)` in one `try` block, catching
+  `(LLMCacheMiss, LLMCallCapExceeded, ValueError, KeyError)` together and
+  falling back to `_deterministic_parse` on any of them.
+- **Problem:** `LLMCacheMiss` means nothing was attempted - the documented
+  offline path. A `ValueError`/`KeyError` from `json.loads` means a call
+  actually ran and came back malformed or the wrong shape - a real failure of
+  a call this run made. Collapsing both into one except clause meant a broken
+  live call and "no key configured" were indistinguishable to the rest of
+  the pipeline. `engine/llm_client.py`'s own `LLMCallCapExceeded` docstring
+  already says "this is a bug, not a case to handle gracefully," yet it sat
+  in the same catch.
+- **Decision:** Split the try blocks. Only `LLMCacheMiss` triggers the
+  deterministic fallback. A parse failure on an actual result now propagates
+  - the harness records it as a scenario `ERROR` (not a silent lower-fidelity
+  answer), and the UI surfaces it via `st.exception` rather than rendering
+  something that looks like the normal offline path.
+- **Change:** `engine/stages/s00_intent.py::run()` - separated the
+  `LLMCacheMiss` catch from the `json.loads` parse step; module docstring
+  states the distinction explicitly.
+- **Result:** `pytest` 8/8, unchanged - the offline/replay path (the only
+  path this session's replay-cache runs exercise) is byte-identical. No live
+  scenario in this repo has yet hit a genuine intent-parse failure, so this
+  closes a gap in defensive coverage rather than fixing an observed
+  misfire - the guard is now in place for when a live run does hit it.
+
+## 014 — A failed live narration call could render a template behind a LIVE provenance banner
+**Date:** 2026-08-30 · **Phase:** 5 · **Commit:** `465bebb`
+
+- **Evidence:** The same pattern, one layer deeper: `engine/stages/s07_narrate.py`'s
+  retry loop caught `(LLMCacheMiss, LLMCallCapExceeded, ValueError, KeyError)`
+  around both `llm_client.complete("narrate", ...)` and the
+  `json.loads`/`validator.validate` step that follows it, and simply
+  `break`-ed out on any of them. If every retry attempt returned text that
+  failed to parse at all - a live-call failure, not a validator rejection -
+  the loop still exited quietly with `narration = None`, which then rendered
+  `template_fn(outcome_draft, persona)`.
+- **Problem:** `provenance.replay_mode` is computed independently of what
+  Stage 07 actually managed to do -
+  `ctx["settings"].replay_mode or not ctx["settings"].llm_api_key` in
+  `engine/pipeline.py::_base_findings` - so a run with a live key configured
+  that attempted a live call and failed to parse it on every retry still
+  reports `replay_mode: False`. `app/main.py::render_findings` reads exactly
+  that field to show "🟢 LIVE model call". The result: a live call that
+  failed silently would still display a LIVE provenance banner over template
+  prose - indistinguishable from a working live call to anyone reading the
+  output, which is exactly what this project's provenance guarantee exists
+  to prevent. This is the strongest of the two fixes in this pair, because it
+  is a defect in the specific claim ("this is a live answer") the whole
+  submission is built to never misrepresent.
+- **Decision:** Track whether any retry attempt failed to parse
+  (`live_attempt_failed`), separately from an ordinary validator rejection
+  (which still falls back to the template silently, by design - `Rule 7`,
+  `validator_retries` is the guard working, not a defect). Raise instead of
+  falling back only when the retry budget is exhausted by real parse
+  failures.
+- **Change:** `engine/stages/s07_narrate.py::run()` - split the
+  `LLMCacheMiss` catch from the parse/validate step, added
+  `live_attempt_failed` tracking, raises `RuntimeError` naming the exhausted
+  retry count when every attempt was a live parse failure rather than a
+  validator rejection. Module docstring states the distinction.
+- **Result:** `pytest` 8/8, unchanged - the validator-rejection fallback path
+  (exercised by the existing schema/validator tests) still falls back to the
+  template exactly as before. Only the previously-unguarded live-parse-
+  failure path changed behaviour, from a silent template render to a raised,
+  loud error.
+
+---
+
 <!--
 Entries to expect. Do not pre-write them — this list is only here so the shape is
 familiar when the moment arrives, and roughly half of these will turn out to be
