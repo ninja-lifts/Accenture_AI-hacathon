@@ -676,6 +676,87 @@ software does not work that way and every judge knows it.
   following this entry are the real-world check, and will be reported
   honestly either way.
 
+## 019 — `magnitude_pct` was a design target, never verified against the data it was meant to describe - true for 12 of 14 planted scenarios
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `357ba41`
+
+- **Evidence:** A live SC-01 narration surfaced an internal contradiction (a
+  category-wide headline number narrated as if it were South-region-specific
+  - full account in entry 020, the fix that came out of the same
+  investigation). Chasing the numbers down: the engine's own DiD-measured
+  SC-01 movement is -18% to -23.5% depending on scope, nowhere near the
+  manifest's declared `magnitude_pct: -8.2`. That prompted checking all 17.
+  An independent script - raw DuckDB queries against
+  `data/generated/meridian.duckdb`, mirroring each `contracts/*.yaml` SQL by
+  hand, deliberately never calling `engine/pipeline.py` - measured every
+  scenario's actual movement and compared it to what the manifest declares.
+  Sanity-checked against the engine's own numbers for SC-01 first: matched
+  to the cent. Full table, methodology and a three-way SC-15 analysis are in
+  the new `data/manifest_reconciliation.md` - not reproduced here in full,
+  since the point of a changelog entry is to point at the artefact, not
+  duplicate it.
+- **Problem:** Of the 14 `planted: true` scenarios, only SC-03 and SC-05
+  land close to their declared `magnitude_pct`. The rest diverge 1.6x-3.5x
+  in both directions. Two are worse than a magnitude miss: **SC-07**
+  measures -0.1% against a declared -6.8% - the two-cause effect it's
+  supposed to test essentially never materialised in the generated data.
+  **SC-15** measures the *wrong sign* (+12.0% against a declared -2.1%) at
+  its declared 2-dimension `true_segment` - because `data/generate.py`
+  actually plants the effect at 3 dimensions (`region, category,
+  channel: Retail`; true 3-dim cell: -84.4%, plant confirmed real and
+  correctly targeted) and the manifest's `true_segment` field never encoded
+  the third one. Root cause, common to all of it: every plant is coded as a
+  raw multiplicative shock to an upstream rate (`conversion_rate`,
+  `sessions_lambda`, `on_time_rate`, `return_rate`, `aov`), chosen when each
+  scenario was designed, and nothing ever verified the chosen multiplier
+  reproduces the declared `magnitude_pct` once it runs through Poisson
+  sampling and aggregation - the same pattern `docs/adr/0006-detection-thresholds.md`
+  already documents for detection thresholds, recurring in a part of the
+  codebase nobody re-checked the second time.
+- **Decision:** Disclose, do not repair. Two things make this safe rather
+  than a pre-registration violation (Rule 2): first, `magnitude_pct` is not
+  a scoring key - grepped `eval/`, `engine/`, `app/`, `tests/`, zero matches
+  outside the manifest itself; `eval/harness.py::score_scenario` reads
+  `true_segment`, `expected_branch` and `evidence_document_ids`, and none of
+  those are in question for 12 of the 14 mismatches. (A related, smaller
+  finding surfaced while verifying this: `eval/metrics.py::rca_top1(findings,
+  true_cause_id)` is defined but never called anywhere - `harness.py`
+  computes its own inline top-1 check from `true_segment` instead, so
+  `true_cause_id` is currently dead weight in scoring too. Not fixed here -
+  out of scope for this disclosure, noted in `data/manifest_reconciliation.md`
+  for whoever picks it up next.) Second, `data/generate.py` and every
+  `magnitude_pct` value are unchanged - regenerating the data to match the
+  manifest after seeing engine output is the one thing pre-registration
+  exists to prevent, and this entry does the opposite: it publishes the
+  mismatch against the frozen file rather than quietly closing the gap.
+  SC-07 and SC-15 are the two exceptions, marked `RETIRED` in their `notes`
+  field only (Rule 2's own prescribed mechanism for an ill-posed scenario) -
+  not because their magnitude is off, but because SC-07's effect is
+  essentially absent and SC-15's `true_segment` (the field that *is* scored)
+  is itself wrong. The other 12 mismatches are disclosed but not retired:
+  their scored fields aren't in question, only an unscored one.
+- **Change:** new `data/manifest_reconciliation.md` (full table, SC-15
+  three-way breakdown, scoring-key audit). `data/injection_manifest.yaml` -
+  SC-07 and SC-15's `notes` fields only, replaced with `RETIRED - <reason>`
+  plus the original design intent for reference; `ground_truth` blocks for
+  both, and every other scenario, byte-identical. `eval/harness.py` - a
+  `RETIRED` scenario now gets its own row (`actual_branch: "RETIRED"`,
+  everything else `None`) instead of being silently skipped from the loop
+  entirely; `render_scorecard` computes every aggregate (pass count,
+  hallucination rate, abstention precision/recall, RCA top-1) from
+  `scored_rows` (retired excluded) rather than all `rows`, so a retirement
+  can never quietly improve a ratio by shrinking its denominator, and a new
+  `### Retired` section names them and why, every time.
+- **Result:** `pytest` 8/8 - `tests/test_findings_schema_valid.py` already
+  had a `RETIRED`-skip check written in from the start (never previously
+  exercised, since nothing was retired until now) and needed no change.
+  Scorecard: **7/17 → 7/15**, hallucinated-cause rate **0/17 → 0/15**,
+  abstention precision **0.25 (1/4) → 0.33 (1/3)** - all because SC-07/SC-15
+  are excluded from every denominator, not because anything else changed;
+  every other row's numbers are byte-identical to the pre-retirement
+  scorecard. Verified the new `### Retired` section renders correctly and
+  both scenarios' full `ground_truth` blocks are still present and unedited
+  in the manifest.
+
 ---
 
 <!--
