@@ -1061,6 +1061,71 @@ software does not work that way and every judge knows it.
   placeholder rate (not a provider invoice - see that file's own docstring):
   $0.5393 combined. Next: B3 baseline, live.
 
+## 026 — A fourth provider, added the same day: OpenAI, when Gemini's rate limit didn't clear on retry
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `1428e61`
+
+- **Evidence:** B3 (no caching, no per-scenario error recovery - entry 018's
+  known gap) hit a Gemini 429 on its third call (SC-03), exhausted 5 retry
+  attempts, and crashed the whole batch. A wait and a full retry from
+  scratch 429'd again, this time immediately on the *first* call
+  (SC-01) - worse than before, not better. Google's rate-limit docs don't
+  publish exact per-model free-tier numbers for a preview model like
+  `gemini-3.6-flash`; they're visible only on the account's own AI Studio
+  dashboard, which wasn't available to check from here.
+- **Problem:** Two providers' free tiers were now both blocking completion
+  of the same task for different reasons (Groq: an account-level quota;
+  Gemini: a rate limit that didn't visibly reset within a reasonable wait).
+  Continuing to guess at wait durations against undocumented limits wasn't
+  a productive use of either the session's time or its budget of real
+  calls.
+- **Decision:** Add OpenAI as a fourth provider rather than keep waiting.
+  No new adapter function needed - OpenAI's Chat Completions API is what
+  Groq's adapter already imitates (Rule 6's "provider is config, not code"
+  claim, now demonstrated a third time). Verified the real narrate-shaped
+  path before running anything at scale, the same discipline applied to
+  Gemini: real SC-01 payload, `_call_live` called directly so the existing
+  good capture wasn't touched.
+- **Change:** `engine/llm_client.py` - `_OPENAI_COMPATIBLE_ENDPOINTS` (a
+  provider-aware default instead of the hardcoded Groq URL),
+  `"openai": _call_live_openai_compatible` registered in `_LIVE_ADAPTERS`.
+- **Result:** Clean on the first real test: valid JSON with no markdown
+  fencing, `reasoning_tokens: 0` (not a thinking model, unlike Gemini - no
+  budget-floor workaround needed), 5.8s latency (vs Gemini's 25-91s), and
+  it followed `prompts/narrate.md`'s `tier_from` convention exactly
+  (`drivers[0]`, `decomposition`) rather than Gemini's structurally-valid
+  but divergent `answer.localization[0]` (entry 022). One honest caveat for
+  the record: unlike Groq/Gemini's free tiers, OpenAI bills real money, and
+  `engine/telemetry.py`'s cost estimate is still the generic illustrative
+  rate, not `gpt-4o-mini`'s actual price - the first provider this project
+  has used where the receipt's "cost" column is not incidentally accurate.
+
+## 027 — First complete live B3 baseline: 14/15 scenarios, zero errors, the SC-08 comparison landed for real
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `9f9bce4`
+
+- **Evidence:** Ran `--baseline` against all 15 non-retired scenarios via
+  OpenAI. Zero 429s, zero retries, zero crashes - the cleanest of the three
+  providers tried this session, on the one baseline run that has no
+  per-scenario error recovery to fall back on if a single call fails.
+- **Problem:** None - this entry is the deliverable entries 008 (which
+  first added a live B3 run, on Groq) and 026 existed to produce: a
+  genuine, complete, live B3 comparison against the current engine and
+  manifest, not a partial or simulated one.
+- **Decision:** Record the real run rather than wait for single-provider
+  purity across every artefact this session touched (entry 025 already
+  established this precedent for the main scorecard).
+- **Change:** `eval/baseline_scorecard.md` regenerated from the live run.
+- **Result:** **The comparison this project's pitch depends on, landed with
+  a real model, today's manifest, today's engine.** On SC-08 (a real,
+  material movement with nothing planted - the negative control), B3
+  confidently invents a specific cause: *"issues with product returns due
+  to packaging problems and a shift in the app's order composition...
+  I am reasonably confident in this assessment."* GlassBox's own SC-08 row
+  (`eval/scorecard.md`) abstains. 2/15 scenarios where B3 asserted a cause
+  on an unplanted movement without hedging (SC-02, SC-08). B1: 2/15 exact
+  segment match, 3/15 scenarios asserting a cause on an unplanted movement.
+  Both baselines now real for the current live-recorded scorecard, not
+  carried over from an earlier engine/manifest state.
+
 ---
 
 <!--
