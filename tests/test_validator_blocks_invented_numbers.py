@@ -105,6 +105,26 @@ def test_driver_sentence_naming_a_segment_with_its_own_numbers_passes():
     assert ok, unaccounted
 
 
+def test_localization_pointer_tier_from_also_rejects_unscoped_headline_numbers():
+    """A live Gemini narration wrote tier_from="answer.localization[0]"
+    instead of "drivers[0]" - a reasonable pointer into the same object, not
+    the one exact string prompts/narrate.md's example shows. The same
+    misattribution (headline numbers cited for a named segment) must still
+    be caught through this convention, not only the drivers[N] one."""
+    narration = {
+        "headline": "Net revenue fell 23.5% (Rs 35 lakh) in the week.",
+        "sentences": [
+            {
+                "text": "Net revenue dropped 23.5% (Rs 35 lakh) in the South region for the Audio category.",
+                "tier_from": "answer.localization[0]",
+            }
+        ],
+    }
+    ok, unaccounted = validate(narration, LOCALIZED_FINDINGS)
+    assert not ok, "an answer.localization[N] sentence naming South must not cite the unscoped headline numbers either"
+    assert unaccounted
+
+
 def test_headline_field_itself_is_exempt_from_segment_scoping():
     """`headline` has no tier_from - it is the one field meant to state the
     unscoped movement, so naming a segment there does not trigger the

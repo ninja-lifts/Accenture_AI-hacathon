@@ -103,7 +103,16 @@ def _narration_sentences(narration: dict[str, Any]) -> list[tuple[str, str | Non
     return out
 
 
-_DRIVER_TIER_FROM_RE = re.compile(r"^drivers\[(\d+)\]")
+# prompts/narrate.md's worked example shows "drivers[0]", and that's what a
+# Groq/gpt-oss-120b narration reliably writes - but a live Gemini narration
+# wrote "answer.localization[0]" instead: a reasonable, structurally valid
+# pointer into the same findings object, just not the one exact string the
+# example models (see CHANGELOG.md). A sentence pointing at ANY per-segment
+# array - drivers, localization, or decomposition, with or without the
+# leading "answer." - carries the same misattribution risk this check exists
+# for, so all of them trigger it, not only the one convention one model
+# happened to follow.
+_SEGMENT_TIER_FROM_RE = re.compile(r"^(?:answer\.)?(?:drivers|localization|decomposition)\[(\d+)\]")
 
 
 def _dimension_values(findings: dict[str, Any]) -> set[str]:
@@ -176,10 +185,15 @@ def validate(narration: dict[str, Any], findings: dict[str, Any]) -> tuple[bool,
     headline, not South's own number (South's own contribution is a
     different, smaller figure, elsewhere in `answer.localization`). Every
     digit was real, so the global check passed it. A sentence whose
-    `tier_from` is `drivers[N]` and which names a specific segment (matched
-    against `answer.localization[].dimensions` values) may not use the
-    unscoped `headline_delta_pct`/`headline_delta_abs` - it must reach for
-    that segment's own numbers instead. `headline` itself is exempt (see
+    `tier_from` points into a per-segment array (`drivers[N]`,
+    `localization[N]` or `decomposition[N]`, with or without a leading
+    `answer.` - a live Gemini narration used `answer.localization[0]` where
+    Groq's model reliably wrote `drivers[0]`; both are reasonable pointers
+    into the same object, so both trigger this, not just the one string the
+    prompt's example happens to show) and which names a specific segment
+    (matched against `answer.localization[].dimensions` values) may not use
+    the unscoped `headline_delta_pct`/`headline_delta_abs` - it must reach
+    for that segment's own numbers instead. `headline` itself is exempt (see
     `_narration_sentences`): it is the one field meant to state the unscoped
     movement.
     """
@@ -191,7 +205,7 @@ def validate(narration: dict[str, Any], findings: dict[str, Any]) -> tuple[bool,
     unaccounted: list[str] = []
     for text, tier_from in _narration_sentences(narration):
         sentence_allowed = allowed
-        if tier_from and _DRIVER_TIER_FROM_RE.match(tier_from) and _names_a_segment(text, dimension_values):
+        if tier_from and _SEGMENT_TIER_FROM_RE.match(tier_from) and _names_a_segment(text, dimension_values):
             sentence_allowed = _exclude_by_magnitude(allowed, headline_numbers)
         for n in extract_numerals(text):
             if not _accounted_for(n, sentence_allowed):

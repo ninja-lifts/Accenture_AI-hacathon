@@ -189,6 +189,82 @@ def _call_live_openai_compatible(settings: config.Settings, system: str, user: s
     return LLMResult(text=text, tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost, from_cache=False)
 
 
+def _call_live_gemini(settings: config.Settings, system: str, user: str, meta: dict[str, Any], label: str = "?") -> LLMResult:
+    """Google AI Studio / Gemini's generateContent REST API, over the same
+    dependency-free urllib path as the other two adapters. Shaped differently
+    from the OpenAI-compatible one in three ways worth flagging: the model id
+    is part of the URL path, not the JSON body; the system prompt is its own
+    top-level `systemInstruction` field, not a `role: system` message; and
+    the API key is a `?key=` query parameter, not an Authorization header -
+    all per Google's documented REST shape, not inferred.
+
+    Confirmed empirically (see CHANGELOG.md), not assumed: this model thinks
+    by default and there is no supported way to turn it off -
+    `thinkingConfig: {thinkingBudget: 0}` is rejected outright with a 400. A
+    trivial one-word prompt still spent 90 tokens on `thoughtsTokenCount`
+    before the visible answer; under `max_output_tokens`, the whole budget
+    goes to thinking and the visible response comes back empty
+    (`finishReason: MAX_TOKENS`, `content: {}`) - the same failure shape as
+    Groq's reasoning models, same fix: budget generously rather than exactly."""
+    model = settings.llm_model or "gemini-3.6-flash"
+    endpoint = settings.llm_endpoint or (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    )
+    declared_max = meta.get("max_output_tokens", 1024)
+    generation_config: dict[str, Any] = {
+        "temperature": meta.get("temperature", 0),
+        "maxOutputTokens": max(declared_max * 3, declared_max + 2000),
+    }
+    if meta.get("output_format") == "json":
+        generation_config["responseMimeType"] = "application/json"
+    payload: dict[str, Any] = {
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "systemInstruction": {"parts": [{"text": system}]},
+        "generationConfig": generation_config,
+    }
+    req = urllib.request.Request(
+        f"{endpoint}?key={settings.llm_api_key}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    data = _urlopen_with_retry(req, label)
+    candidates = data.get("candidates") or []
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    text = _clean_gemini_json_text("".join(p.get("text", "") for p in parts))
+    usage = data.get("usageMetadata", {})
+    tokens_in = usage.get("promptTokenCount", 0)
+    tokens_out = usage.get("candidatesTokenCount", 0)
+    cost = telemetry.estimate_cost(tokens_in, tokens_out, settings.llm_model)
+    return LLMResult(text=text, tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost, from_cache=False)
+
+
+def _clean_gemini_json_text(text: str) -> str:
+    """Gemini's JSON mode can still wrap the payload in a markdown code
+    fence with commentary after it, even with responseMimeType set to
+    application/json - observed empirically on a real narrate-shaped call
+    (see CHANGELOG.md), not assumed. Strips a leading fence if present, then
+    takes the first complete JSON value via json.JSONDecoder.raw_decode,
+    which stops at the end of that value and simply ignores anything
+    trailing it - no need to locate or strip a closing fence separately.
+    Falls back to the original text unchanged if this doesn't apply or
+    still doesn't parse: s07_narrate.py's own json.loads/validator retry
+    path already handles a genuinely unparseable response correctly (retry,
+    then raise loudly) - this only needs to fix the case that IS valid JSON
+    once unwrapped, not invent a second error-handling path for the case
+    that isn't."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+    first_newline = stripped.find("\n")
+    body = stripped[first_newline + 1:] if first_newline != -1 else stripped
+    try:
+        obj, _end = json.JSONDecoder().raw_decode(body.strip())
+    except ValueError:
+        return text
+    return json.dumps(obj)
+
+
 def _do_single_attempt(req: urllib.request.Request, result_q: "queue.Queue[tuple[str, Any]]") -> None:
     """Runs in its own daemon thread so the waiter in _urlopen_with_retry can
     give up on a wall-clock deadline even though nothing in urllib can be
@@ -288,6 +364,7 @@ def _urlopen_with_retry(req: urllib.request.Request, label: str) -> dict[str, An
 _LIVE_ADAPTERS = {
     "anthropic": _call_live_anthropic,
     "groq": _call_live_openai_compatible,
+    "gemini": _call_live_gemini,
 }
 
 
