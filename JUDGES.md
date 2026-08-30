@@ -17,8 +17,10 @@ clicking a dead link.
 ## If you have 5 minutes
 
 1. Open [`eval/scorecard.md`](eval/scorecard.md) and read the **Headline**
-   section first, not the pass/fail table. **Hallucinated-cause rate: 0/17.**
-   No run ever asserted a cause the data doesn't support.
+   section first, not the pass/fail table. **Hallucinated-cause rate: 0/15**
+   (15 scored; two scenarios retired in place, see below — this is a real
+   live-recorded run, not replay-only). No run ever asserted a cause the
+   data doesn't support.
 2. Open [`TRAJECTORIES.md`](TRAJECTORIES.md) §2 — **SC-08**. We planted a
    real, material revenue drop with *no cause anywhere in the data*, salted
    the evidence corpus with plausible-looking decoys, and the system
@@ -43,10 +45,12 @@ Add:
 4. [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) — two real,
    run-not-invented baselines. B1 (naive drill-down) asserts a confident
    cause on **all 3** of the scenarios where none was planted. B3
-   (single-LLM-prompt, live via Groq's `openai/gpt-oss-120b`) does the same
-   on the 2 of those 3 it was actually sent a prompt for, fluently, at
-   "70-80% confidence," citing a real ticket number that is a planted decoy.
-   GlassBox's rate on the same three: zero.
+   (single-LLM-prompt, live via OpenAI's `gpt-4o-mini` — after Groq's
+   account-level quota and then Gemini's rate limit both blocked completion,
+   `CHANGELOG.md` entries 026-027) does the same on the 2 of those 3 it was
+   actually sent a prompt for, fluently, saying *"I am reasonably confident
+   in this assessment"* about a cause built entirely from the planted decoy
+   evidence. GlassBox's rate on the same three: zero.
 5. [`TRAJECTORIES.md`](TRAJECTORIES.md) §1 — **SC-01**, the hero, all seven
    stages with real numbers: a courier-collapse cause found, and a genuinely
    confounding national promotion (real, well-timed, well-documented)
@@ -117,20 +121,33 @@ and CHANGELOG 002-005), that happened before freeze, is documented with the
 evidence that motivated it, and never touched `true_segment`, `true_cause_id`,
 or `evidence_document_ids` — the fields actually used for scoring.
 
-**The changelog agrees with the history.** [`CHANGELOG.md`](CHANGELOG.md) — 10
-entries, each naming what evidence prompted a change and what the change was,
-including several real bugs found only by running the scenarios (or a live
-model) after the engine was believed finished — a validator gap on `M`/million
-suffixes, a tier-resolver crash on a model-authored pointer, a cross-process
-floating-point non-determinism bug in DuckDB's default aggregation.
+**The changelog agrees with the history.** [`CHANGELOG.md`](CHANGELOG.md) — 28
+entries, each naming what evidence prompted a change and what the change
+was and naming the real commit, including several real bugs found only by
+running the scenarios (or a live model) after the engine was believed
+finished: a validator gap on `M`/million suffixes, a tier-resolver crash on
+a model-authored pointer, a cross-process floating-point non-determinism bug
+in DuckDB's default aggregation, a live call that hung for 19 minutes with
+no exception because `urlopen`'s timeout bounds a socket operation, not the
+whole request, and — found only by actually going live end to end — a real
+narration that reattached a category-wide number to a named sub-region,
+individually-real digits assembled into a false claim the validator's old
+design couldn't catch.
 
-**The scorecard shows failures, and now explains them.** 10 of 17 scenarios
-don't pass exactly. None of the 10 asserts a wrong or invented cause — 3
-abstain conservatively where an answer was possible (SC-06, SC-12, SC-15) and
-7 answer on the correct branch with real cited evidence but name a broader or
-adjacent segment than the exact ground truth (see the Misses section for the
-specific dimension each one over- or under-included). We would rather show
-this breakdown than a single "10 failed" line.
+**The scorecard shows failures, and now explains them.** 8 of the 15 scored
+scenarios don't pass exactly. None of the 8 asserts a wrong or invented
+cause — 2 abstain conservatively where an answer was possible (SC-06,
+SC-12) and 6 answer on the correct branch with real cited evidence but name
+a broader or adjacent segment than the exact ground truth (see the Misses
+section for the specific dimension each one over- or under-included). We
+would rather show this breakdown than a single "8 failed" line. Two more
+scenarios (SC-07, SC-15) are retired, not failed — `data/manifest_reconciliation.md`
+found their declared `magnitude_pct` was never verified against what the
+generator actually plants (true for 12 of 14 planted scenarios, disclosed
+there in full), and for these two specifically the field that *is* scored
+(`true_segment` for SC-15, a near-zero real effect for SC-07) is itself the
+problem, not just the magnitude. Both stay in the manifest, `ground_truth`
+unedited, per our own pre-registration rule.
 
 **Five of seven stages never touch a language model.** The model turns a
 question into a query and a result into a sentence. Every numeral it writes is
@@ -155,13 +172,15 @@ We would rather name these than have you find them.
   [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) is real: B1
   (naive drill-down) asserts a cause on **3 of 3** scenarios where none was
   planted (SC-02, SC-08, SC-17), because it has no concept of declining. B3
-  (same retrieved data, one LLM prompt, no pipeline, live via Groq's
-  `openai/gpt-oss-120b`) does the same on 2 of those 3 — the one it wasn't
-  sent a prompt for, SC-17, has no single question to hand it in the first
-  place. GlassBox's rate on those same three: 0/3. On SC-08 specifically, B3
-  produces a fluent, ~70-80%-confident cause citing a real ticket number
-  (TCK-6666) that is a planted decoy — see `TRAJECTORIES.md`'s §2 for the
-  full transcript.
+  (same retrieved data, one LLM prompt, no pipeline, live via OpenAI's
+  `gpt-4o-mini` — Groq's account-level quota and then Gemini's rate limit
+  both blocked completion first, `CHANGELOG.md` entries 026-027) does the
+  same on 2 of those 3 — the one it wasn't sent a prompt for, SC-17, has no
+  single question to hand it in the first place. GlassBox's rate on those
+  same three: 0/3. On SC-08 specifically, B3 produces a fluent, confident
+  cause ("I am reasonably confident in this assessment") built from the
+  same decoy evidence GlassBox saw and declined to act on — see
+  `TRAJECTORIES.md`'s §2 for the full transcript.
 - **The primary dataset is synthetic.** It has to be — no public dataset
   pairs business KPIs with customer text *and* labelled causes
   ([why](docs/05_DATA_STRATEGY.md#2-why-the-ideal-dataset-does-not-exist)).
@@ -175,20 +194,30 @@ We would rather name these than have you find them.
   is a stricter, more conservative response than originally designed for but
   not a wrong one; see `eval/scorecard.md`'s Misses section for the specific
   evidence-floor reason.
-- **The default clone runs the template narrator, not the live one, and
-  that's a real gap worth naming precisely.** Live narration quality *has*
-  been demonstrated — we ran it this session (Groq,
-  `openai/gpt-oss-120b`) and it produced natural, correctly-validated prose,
-  e.g. *"Net revenue fell 23.5% (Rs 34,99,600) in the week to 14 Aug... The
-  primary driver is a localized movement in the Audio category within the
-  South region..."* (`TRAJECTORIES.md`'s §1). But a determinism bug fix
-  (single-threaded DuckDB, `PRAGMA threads=1` — see CHANGELOG) invalidated
-  the replay-cache keys computed during that testing, and repopulating them
-  hit unresolved hangs against the live API. So `eval/replay_cache/narrate/`
-  is currently empty, and a fresh clone gets the template fallback instead —
-  legible but mechanical, e.g. `"driven by: Movement localized to
-  {'category': 'Audio', 'region': 'South'}"`. Every number is validated
-  against the findings object either way.
+- **This one used to be a real gap; it isn't anymore, and we're leaving the
+  history here rather than deleting it.** An earlier version of this repo
+  had an empty `eval/replay_cache/narrate/` — live narration quality had
+  been demonstrated in testing, but a determinism fix invalidated the cache
+  keys and repopulating them hit unresolved hangs against the live API
+  (root-caused later: `urllib.request.urlopen(timeout=N)` bounds a single
+  socket operation, not the whole request — a connection trickling bytes in
+  under that ceiling never trips it, however long the true wall-clock time
+  is; `CHANGELOG.md` entry 016). **That's fixed now**, and the cache is
+  genuinely populated: 18 narrate + 1 intent_parse entries, real captures
+  from a live end-to-end run across two providers (12 Groq, 7 Gemini, after
+  Groq's account-level quota blocked further calls — entries 019-028). A
+  fresh clone with no key resumes those exact real narrations, e.g.
+  *"Net Revenue fell -23.5% (Rs 35 lakh) in the week to 14 Aug... The South
+  region, within Audio, accounts for 77.8% of that category-wide decline -
+  Rs 27.24 lakh"* (`TRAJECTORIES.md`'s §1) — not the template fallback.
+  Along the way, this surfaced a real correctness bug in the narration
+  itself worth knowing about: a live response once misattributed the
+  category-wide headline number to a named sub-region, because every digit
+  was individually real (just reattached to the wrong claim), which the
+  validator's number-presence check couldn't catch by design. Fixed with
+  per-sentence scope checking, not a prompt patch alone — `CHANGELOG.md`
+  entry 020, and the regression test that would have caught the original
+  bug is in `tests/test_validator_blocks_invented_numbers.py`.
 - **The semantic contract is real adoption cost.** Five metrics is an
   afternoon each with their owners. Four hundred is a programme, and we would
   not pretend otherwise.

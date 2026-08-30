@@ -160,7 +160,9 @@ produces a confident, unverifiable, sometimes fabricated paragraph.
 GlassBox is neither: five of seven stages are arithmetic and statistics with
 no model in the loop, the two touchpoints that do use one are capped and
 number-validated, and — measured, not claimed — it produces zero
-hallucinated causes across 17 pre-registered scenarios while a real, live
-run of the obvious one-prompt alternative invents one on the scenario
-designed to test exactly that. The hard engineering problem was not finding
+hallucinated causes across 15 scored, pre-registered scenarios (17
+pre-registered; two retired in place when their own ground truth turned out
+to need fixing, published in full rather than quietly dropped) while a
+real, live run of the obvious one-prompt alternative invents one on the
+scenario designed to test exactly that. The hard engineering problem was not finding
 causes. It was building something that stays quiet when there isn't one.

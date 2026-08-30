@@ -57,7 +57,7 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] `[Y]` s07 narrate
 - [x] ⭐ `[Y]` validator + its test
 - [x] `[Y]` s00 intent + clarification branch (SC-17)
-- [ ] `[Y]` Replay cache committed — **not currently populated.** A Groq key became available this session and live narration was verified working for real (CHANGELOG 008-010, real quotes preserved there and in `eval/baseline_scorecard.md`), but a determinism bug fix (CHANGELOG 010's companion fix in `engine/pipeline.py::_setup`, forcing single-threaded DuckDB) invalidated the cache keys computed during testing, and repeated attempts to repopulate afterward hit long, unexplained hangs against the live API that this session couldn't resolve. `eval/replay_cache/narrate/` is empty; a fresh clone today gets the deterministic template narrator, which is still numerically correct, just less polished prose. Named honestly rather than claimed and left broken.
+- [x] `[Y]` Replay cache committed — **populated for real** (CHANGELOG 019-028). 18 narrate + 1 intent_parse entries, all genuine captures: 12 from Groq before its account-level quota blocked further calls, 7 from Gemini (with two real Gemini-specific bugs found and fixed: a thinking-token budget floor and JSON code-fence unwrapping) after. `eval/scorecard.md` is now the live-recorded scorecard, not the replay-only one; diffed byte-identical against a fresh `GLASSBOX_REPLAY=1` regeneration except the header commit hash, proving replay reproduces live exactly.
 - [x] `[N]` Persona switcher · alert feed(-equivalent) · question box (`app/main.py` — sidebar persona override + scenario picker; functionally verified via headless `AppTest` across all 17 scenarios × 3 personas, zero exceptions — not yet browser-verified, see gaps below)
 - [x] ⭐ `[N]` Tiered sentences · evidence drawer · action card (`app/main.py::render_findings`)
 - [ ] `[N]` Progress narration during the run
@@ -73,11 +73,11 @@ Legend: `[Y]` Yuvraj · `[N]` Nikhil · `[B]` both · ⭐ never cut
 - [x] `[Y]` Scoring rules written **before** first run (docs/04_EVALUATION_PLAN.md predates the harness)
 - [ ] `[Y]` RS benchmark, 7 published algorithms *(not run — see gaps below)*
 - [x] `[Y]` **Thresholds frozen after the benchmark** (calibrated + committed, ADR-0006; ready to freeze at Phase 6 proper)
-- [x] `[Y]` B1 baseline (`eval/baselines/b1_naive.py` + `run_all.py`, real, run: 2/17 exact match, asserts a cause on 3/3 unplanted scenarios vs GlassBox's 0/3)
-- [x] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison** — run live (`openai/gpt-oss-120b` via Groq), not simulated: on SC-08 specifically, produced a fluent, 70-80%-confident, fabricated cause. 2/3 unplanted scenarios hallucinated a cause; GlassBox 0/3. Real quotes in `eval/baseline_scorecard.md`. *(Screenshot itself not taken — the quote is the evidence; a screenshot would just be a picture of the same text.)*
-- [x] `[Y]` Cost receipt (`eval/cost_receipt.md`, generated from real telemetry — honestly $0.00, no live key configured)
+- [x] `[Y]` B1 baseline (`eval/baselines/b1_naive.py` + `run_all.py`, real, run: 2/15 exact match, asserts a cause on 3/3 unplanted scenarios vs GlassBox's 0/3)
+- [x] ⭐ `[Y]` **B3 LLM-only baseline + the SC-08 comparison** — run live (`gpt-4o-mini` via OpenAI, after Groq's quota and Gemini's rate limit both blocked completion - CHANGELOG 026-027), not simulated: on SC-08 specifically, invented a specific cause with "I am reasonably confident in this assessment." 2/3 unplanted scenarios hallucinated a cause; GlassBox 0/3. Real quotes in `eval/baseline_scorecard.md`. *(Screenshot itself not taken — the quote is the evidence; a screenshot would just be a picture of the same text.)*
+- [x] `[Y]` Cost receipt (`eval/cost_receipt.md`, generated from real live telemetry - `Mode: live`, real nonzero tokens, real $0.00 because both providers used were free-tier, not because no key was configured. Carries a correction for a real latency-measurement bug found this session - CHANGELOG 024.)
 - [ ] `[Y]` CI green, scorecard auto-published
-- [x] ⭐ `[Y]` **Scorecard committed with misses shown** (`eval/scorecard.md`, 7/17 exact-pass, 0/17 hallucinated causes, all 10 misses explained)
+- [x] ⭐ `[Y]` **Scorecard committed with misses shown** (`eval/scorecard.md`, live-recorded: 7/15 exact-pass, 0/15 hallucinated causes, all 8 misses explained. SC-07 and SC-15 retired in place - `data/manifest_reconciliation.md` - not cut, not hidden: `magnitude_pct` was never verified against generated output for 12 of 14 planted scenarios, and these two specifically have a wrong scoring key, not just a wrong magnitude.)
 - [ ] `[Y]` E3 negative-control suite · E5 ablations *(if time)*
 - [ ] ⭐ `[B]` **`make reproduce` tested on the other person's machine (T−7)**
 

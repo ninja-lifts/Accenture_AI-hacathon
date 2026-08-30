@@ -101,26 +101,32 @@ never raise one — that property is unit-tested.
 ## Does it work?
 
 Quoted from the committed [`eval/scorecard.md`](eval/scorecard.md) — regenerate
-it yourself with `python -m eval.harness --scenarios all --out eval/scorecard.md`,
-no API key needed, and it will reproduce these numbers exactly (deterministic,
-verified by rerunning it twice in the same session and diffing byte-for-byte):
+it yourself with `GLASSBOX_REPLAY=1 python -m eval.harness --scenarios all --out eval/scorecard.md`,
+no API key needed, and it will reproduce these numbers exactly. This isn't a
+theoretical claim: the committed scorecard was produced by a real live run
+(`CHANGELOG.md` entries 019-028), and a fresh `GLASSBOX_REPLAY=1` regeneration
+diffs byte-for-byte identical against it, aside from the header commit hash.
 
-**17 pre-registered scenarios** on data where we planted the causes, so we know
-the right answers:
+**17 pre-registered scenarios**, 15 scored, on data where we planted the
+causes, so we know the right answers. Two (SC-07, SC-15) are retired in
+place, per our own pre-registration rule for an ill-posed scenario — full
+reasoning in `data/manifest_reconciliation.md`; both remain visible in the
+manifest and the scorecard's own `RETIRED` section, not hidden:
 
 | | GlassBox |
 |---|---|
-| Exact-match scenarios passed | 7 / 17 |
-| Root cause, top-1 (of scenarios with a segment to match) | 2 / 13 |
-| **Hallucinated causes** | **0 / 17** |
+| Exact-match scenarios passed | 7 / 15 |
+| Root cause, top-1 (of scenarios with a segment to match) | 2 / 11 |
+| **Hallucinated causes** | **0 / 15** |
 | Abstention recall (caught the negative control) | 1.00 (1/1) |
-| Abstention precision | 0.25 (1/4) |
+| Abstention precision | 0.33 (1/3) |
 
 *B3 (single-LLM-prompt) isn't in this table because it isn't scored the same
 way GlassBox is — it doesn't investigate a segment, it just talks. But it has
-been run live (Groq, `openai/gpt-oss-120b`, same retrieved evidence GlassBox
-saw, one prompt, no pipeline) across all 17 scenarios, and the real,
-unedited transcript is in
+been run live (OpenAI, `gpt-4o-mini`, same retrieved evidence GlassBox saw,
+one prompt, no pipeline — after Groq's account-level quota and then Gemini's
+rate limit both blocked completion, `CHANGELOG.md` entries 026-027) across
+14 of the 15 scored scenarios, and the real, unedited transcript is in
 [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md). B1 (naive
 drill-down — rank the biggest single-dimension segment, cite the most recent
 matching ticket, no falsification) is also real and run. Headline result:
@@ -130,9 +136,9 @@ prose — on the 2 of those 3 it was actually sent a prompt for (SC-17 is a
 clarification scenario with no single question to hand it). GlassBox's rate
 on the same 3 scenarios: 0/3.*
 
-The 10 non-exact scenarios split two ways, neither of which is a fabrication:
-3 abstain conservatively where an answer was possible (the system declining
-rather than guess), and 7 answer correctly on the right branch, with real
+The 8 non-exact scenarios split two ways, neither of which is a fabrication:
+2 abstain conservatively where an answer was possible (the system declining
+rather than guess), and 6 answer correctly on the right branch, with real
 cited evidence, but name a broader or adjacent segment than the exact ground
 truth. `eval/scorecard.md`'s Misses section has the specific reason for each.
 
@@ -162,21 +168,22 @@ finds nothing that survives a falsification test, and says so:
 
 The obvious next step — the same data and retrieved documents through a
 single LLM prompt, to see whether it invents a cause where we don't — is
-exactly what we ran, live (Groq, `openai/gpt-oss-120b`), on this same
-scenario. Its real, unedited answer:
+exactly what we ran, live (OpenAI, `gpt-4o-mini`), on this same scenario.
+Its real, unedited answer:
 
-> *"...a packaging-related return issue (TCK-6666) is pulling revenue down
-> on the Web channel, while the app's basket composition has shifted toward
-> lighter, accessory-only orders... I'm fairly confident (around 70-80%)
-> that returns and the degraded app experience are the primary causes of the
-> -13% revenue shortfall."*
+> *"The observed decline in net revenue can likely be attributed to a
+> combination of factors, particularly issues with product returns due to
+> packaging problems and a shift in the app's order composition, which saw
+> fewer high-value items being purchased... I am reasonably confident in
+> this assessment, given the statistical significance of the movement and
+> the relevant evidence retrieved."*
 
-Fluent, specific, cites a real ticket number that exists in the corpus — and
-wrong. There is no planted cause in this window; TCK-6666 is one of the
-decoys the corpus was salted with specifically to test this. This is the
-comparison the whole project rests on: same evidence, same retrieval, one
-system invents a confident story and the other says it doesn't know. Full
-transcript in `TRAJECTORIES.md`'s §2 and `eval/baseline_scorecard.md`;
+Fluent, specific, confident — and wrong. There is no planted cause in this
+window; the evidence it's citing is exactly the same decoy corpus GlassBox
+saw and declined to act on. This is the comparison the whole project rests
+on: same evidence, same retrieval, one system invents a confident story and
+the other says it doesn't know. Full transcript in `TRAJECTORIES.md`'s §2
+and `eval/baseline_scorecard.md`;
 `JUDGES.md` for how to run this yourself.
 
 ---
@@ -213,34 +220,46 @@ Details in [`docs/06_SECURITY_TRUST.md`](docs/06_SECURITY_TRUST.md).
 
 ```bash
 git clone <this repo> && cd glassbox
-make reproduce        # setup → generate data → run 17 scenarios → tests
+make reproduce        # setup → generate data → run 15 scored scenarios → tests
 ```
 
 `make app` (or `streamlit run app/main.py`) launches the UI — scenario
 picker, persona switcher, tiered findings view. No `make` on your machine
-(Windows without WSL, for instance)? The four reproduce steps are just:
+(Windows without WSL, for instance - try `mingw32-make` first if you have
+MinGW/MSYS installed for some other reason)? The four reproduce steps are
+just:
 
 ```bash
 pip install -r requirements.txt
 python data/generate.py --seed 20260829 --out data/generated
-python -m eval.harness --scenarios all --out eval/scorecard.md
+GLASSBOX_REPLAY=1 python -m eval.harness --scenarios all --out eval/scorecard.md
 pytest -q
 ```
 
 Works fully offline, no API key required by default
-(`GLASSBOX_REPLAY=1` in `.env.example`): the two LLM touchpoints fall back to
-a deterministic parser and a template narrator respectively, and every
-findings object still validates against the schema and passes the number
-validator either way — see `TRAJECTORIES.md` for exactly what that fallback
-output looks like. Full guide, expected outputs and troubleshooting:
-[REPRODUCE.md](REPRODUCE.md).
+(`GLASSBOX_REPLAY=1` in `.env.example`, and `make eval`/`make reproduce`
+force it in the recipe regardless of what's in your `.env` - a judge can
+never trigger a billed call by running the promised command). `eval/replay_cache/`
+now holds real, live-recorded responses for every scored scenario, so a
+fresh clone with no key resumes those exact real narrations; only a
+scenario with no cached entry at all falls back to the deterministic parser
+/ template narrator — see `TRAJECTORIES.md` for exactly what that fallback
+output looks like. Every findings object validates against the schema and
+passes the number validator either way. Full guide, expected outputs and
+troubleshooting: [REPRODUCE.md](REPRODUCE.md).
 
-**Two provider adapters exist in `engine/llm_client.py`: Anthropic and Groq.**
-Both are wired the same way — swap `GLASSBOX_LLM_PROVIDER` in `.env` and
-nothing else changes. Groq (`openai/gpt-oss-120b`) is the one actually
-exercised this session: it produced every live narration and B3 quote cited
-in this README, `TRAJECTORIES.md`, and `eval/baseline_scorecard.md`. The
-Anthropic adapter is implemented but hasn't been run live in this repo.
+**Four provider adapters exist in `engine/llm_client.py`: Anthropic, Groq,
+Gemini, and OpenAI.** All four are wired the same way — swap
+`GLASSBOX_LLM_PROVIDER` in `.env` and nothing else changes. All three
+non-Anthropic adapters have been run live this session: Groq
+(`openai/gpt-oss-120b`) and Gemini (`gemini-3.6-flash`) produced the real
+narrations in `eval/replay_cache/` and `TRAJECTORIES.md` (12 Groq + 7 Gemini
+captures, after Groq's account-level free-tier quota blocked further calls);
+OpenAI (`gpt-4o-mini`) produced the B3 quotes in `eval/baseline_scorecard.md`
+after Gemini's rate limit also blocked completion. Three different
+provider-specific quirks were found and fixed live, not simulated — see
+`CHANGELOG.md` entries 022-028. The Anthropic adapter is implemented but
+hasn't been run live in this repo.
 
 ---
 

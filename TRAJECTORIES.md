@@ -361,11 +361,23 @@ a best effort. For a system whose job is to be believed by a finance
 function, we think that is the right trade — but it is a trade, and it is
 recorded as [ADR-0003](docs/adr/0003-not-an-agent.md).
 
-**What's genuinely missing from this file:** a `--trace` CLI flag on
-`engine/pipeline.py` that produces this markdown automatically (everything
-above was captured by instrumenting the stage functions directly in a
-Python shell). SC-01 and SC-08 *were* run live this session with real
-narration shown above; SC-14 was not attempted live. The live SC-01/SC-08
-cache entries are not currently committed to `eval/replay_cache/` — see the
-honest account in `CHECKLIST.md` and CHANGELOG 009-010 for why. Both
-remaining gaps are open items, not silently dropped.
+**Update, later in this project's history:** the `--trace` CLI flag this
+section originally said was missing now exists —
+`python -m eval.trace SC-01` writes `eval/traces/SC-01.md` directly from
+`engine/pipeline.py`'s own context, for any scenario (CHANGELOG entry 012).
+The traces below predate it and were captured by instrumenting the stage
+functions directly, as the text says; they're left as-is rather than
+regenerated, since nothing in them has changed.
+
+More significantly: `eval/replay_cache/` is no longer empty. A later,
+separate live run recorded real narrations for every scored scenario (18
+narrate + 1 intent_parse entries, 12 Groq + 7 Gemini — `CHANGELOG.md`
+entries 019-028), and they're committed. `llm_calls=0` in the traces above
+describes those *specific* captures, taken before that run — it is not a
+description of what a fresh clone gets today. A fresh clone with no key now
+resumes the real captured narration for SC-01/SC-08/SC-09/SC-13 and most of
+the rest of the suite from that cache, not the deterministic template
+fallback the rest of this section describes. The architectural point still
+holds regardless — the model has no influence on control flow either
+way — but "the model never actually ran" is no longer the default
+experience, and this file shouldn't imply that it is.
