@@ -1126,6 +1126,56 @@ software does not work that way and every judge knows it.
   Both baselines now real for the current live-recorded scorecard, not
   carried over from an earlier engine/manifest state.
 
+## 028 — Three disclosed-but-deferred bugs from the live recording session, fixed
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `2b1a602`
+
+- **Evidence:** All three were found and explicitly deferred during entries
+  022-027 rather than fixed mid-task. (1) B3's Gemini run crashed entirely
+  on a single scenario's 429 (entry 026), losing two already-real answers.
+  (2) A truncated Gemini response got cached before its budget fix landed
+  (entry 023), and a `pytest` run in replay mode correctly refused to treat
+  the corrupted text as valid - the right behaviour, but only by luck of a
+  test happening to cover that exact cache entry. (3)
+  `eval/metrics.py::rca_top1` was noted as dead code while auditing what's
+  actually a scoring key (entry 019).
+- **Problem:** (1) `eval/baselines/run_all.py::main()` has no per-scenario
+  error recovery, unlike `eval/harness.py`'s main loop - a live-call
+  failure anywhere in the batch loses every result before it, not just the
+  one scenario that failed. (2) `engine/llm_client.py::complete()` writes
+  a live response to cache unconditionally; nothing stops a response that
+  doesn't even parse as JSON from being persisted as if it were a usable
+  capture, ready to poison a *future* run via the resumable-cache path
+  (entry 018) rather than just failing loudly once. (3) A function keyed on
+  `true_cause_id` sitting in `eval/metrics.py`'s public surface implies
+  root-cause-id scoring happens somewhere it doesn't, which is exactly the
+  kind of mismatch between what a file claims and what it does this
+  project's entire changelog exists to catch.
+- **Decision:** Fix all three for real now rather than continue deferring
+  them past the session that found them. (1) Wrap the per-scenario body in
+  `try/except`, matching the main harness's existing pattern exactly - a
+  failure becomes an `ERROR: ...` row, the batch continues. (2) Use the
+  `json_mode` parameter `complete()` already had but never read: when true
+  (every current prompt's default), a response that fails `json.loads` is
+  still returned to the caller normally - its own retry/error handling is
+  unaffected - but is not written to `eval/replay_cache/`. (3) Delete
+  `rca_top1()`; keep the metric name documented in the module docstring,
+  pointing at where it's actually computed (`eval/harness.py`'s inline
+  `true_segment` check - there is nothing a `true_cause_id`-keyed function
+  could check, since the engine never sees the generator's internal cause
+  ids by design).
+- **Change:** `eval/baselines/run_all.py` (try/except per scenario, error
+  count in the totals line). `engine/llm_client.py::complete()`
+  (`json_mode`-gated cache write; docstring). `eval/metrics.py` (`rca_top1`
+  removed, docstring updated). `tests/test_llm_client_force_live.py` -
+  existing fixtures switched from plain strings to valid JSON (fix 2 would
+  otherwise have silently stopped caching the test's own fake responses -
+  caught by running the suite, not anticipated), new test asserting an
+  unparseable response is returned to the caller but never written to disk.
+- **Result:** `pytest` 14/14. Replay-mode `eval/scorecard.md` regenerated
+  and diffed against the committed live version: byte-identical except the
+  header commit hash - none of these three fixes touch scoring or the
+  offline path, confirmed rather than assumed.
+
 ---
 
 <!--
