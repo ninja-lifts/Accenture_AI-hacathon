@@ -205,13 +205,20 @@ def render_scorecard(rows: list[dict[str, Any]]) -> str:
         commit = "unknown"
     today = dt.date.today().isoformat()
 
-    n_pass = sum(1 for r in rows if r["pass"])
-    answerable = [r for r in rows if r["expected_branch"] == "answer"]
+    # Retired scenarios (data/manifest_reconciliation.md) are excluded from
+    # every aggregate below - a retirement must never quietly improve a ratio
+    # by shrinking its denominator. They're still rendered, explicitly, in
+    # their own section further down, so nothing about them is hidden.
+    scored_rows = [r for r in rows if not r.get("retired")]
+    retired_rows = [r for r in rows if r.get("retired")]
+
+    n_pass = sum(1 for r in scored_rows if r["pass"])
+    answerable = [r for r in scored_rows if r["expected_branch"] == "answer"]
     top1_hits = sum(1 for r in answerable if r["rca_top1"])
-    hallucinated = sum(1 for r in rows if r["hallucinated_cause"])
-    abstain_rows = [r for r in rows if r["expected_branch"] == "abstention"]
+    hallucinated = sum(1 for r in scored_rows if r["hallucinated_cause"])
+    abstain_rows = [r for r in scored_rows if r["expected_branch"] == "abstention"]
     should_abstain_and_did = sum(1 for r in abstain_rows if r["actual_branch"] == "abstention")
-    did_abstain = [r for r in rows if r["actual_branch"] == "abstention"]
+    did_abstain = [r for r in scored_rows if r["actual_branch"] == "abstention"]
     should_have = sum(1 for r in did_abstain if r["expected_branch"] == "abstention")
     precision = should_have / len(did_abstain) if did_abstain else float("nan")
     recall = should_abstain_and_did / len(abstain_rows) if abstain_rows else float("nan")
@@ -224,11 +231,11 @@ def render_scorecard(rows: list[dict[str, Any]]) -> str:
     # into one score; the prose here follows that by not leading with "N/17"
     # either, since that number alone hides which failure mode occurred.
     over_abstain_ids = ", ".join(over_abstentions) if over_abstentions else "none"
-    imprecise = [r["id"] for r in rows if not r["pass"] and r["actual_branch"] == "answer" and r["branch_pass"]]
+    imprecise = [r["id"] for r in scored_rows if not r["pass"] and r["actual_branch"] == "answer" and r["branch_pass"]]
     imprecise_ids = ", ".join(imprecise) if imprecise else "none"
     lines.append("### Headline")
     lines.append(
-        f"**Hallucinated-cause rate: {hallucinated}/{len(rows)}.** No run ever asserted a cause the manifest "
+        f"**Hallucinated-cause rate: {hallucinated}/{len(scored_rows)}.** No run ever asserted a cause the manifest "
         f"says wasn't there, and no run ever asserted the wrong branch entirely (every miss below reached the "
         f"*correct* branch or a strictly more cautious one). The misses split two ways: over-cautious "
         f"abstentions ({over_abstain_ids}) that declined rather than assert an uncertain cause, and imprecise "
@@ -250,27 +257,42 @@ def render_scorecard(rows: list[dict[str, Any]]) -> str:
         )
     lines.append("")
     lines.append(
-        f"Totals: {n_pass}/{len(rows)} pass · RCA top-1 {top1_hits}/{len(answerable)} answerable · "
-        f"hallucinated causes {hallucinated}/{len(rows)}"
+        f"Totals: {n_pass}/{len(scored_rows)} pass · RCA top-1 {top1_hits}/{len(answerable)} answerable · "
+        f"hallucinated causes {hallucinated}/{len(scored_rows)}"
     )
+    if retired_rows:
+        lines.append(
+            f"{len(retired_rows)} scenario(s) retired, excluded from every total above: "
+            f"{', '.join(r['id'] for r in retired_rows)} — see data/manifest_reconciliation.md."
+        )
     lines.append("")
 
     lines.append("### Q3: trust behaviour")
     lines.append(
         f"abstention precision {precision:.2f} ({should_have}/{len(did_abstain)}) · "
         f"recall {recall:.2f} ({should_abstain_and_did}/{len(abstain_rows)}) · "
-        f"hallucinated-cause rate {hallucinated/len(rows):.2f}"
+        f"hallucinated-cause rate {hallucinated/len(scored_rows):.2f}"
     )
     lines.append("")
 
     lines.append("### Misses")
-    misses = [r for r in rows if not r["pass"]]
+    misses = [r for r in scored_rows if not r["pass"]]
     if not misses:
         lines.append("None.")
     else:
         for r in misses:
             lines.append(f"**{r['id']}** — {r['explanation']} ({r['title']})")
     lines.append("")
+
+    if retired_rows:
+        lines.append("### Retired")
+        lines.append(
+            "Left in place per CLAUDE.md's rule for an ill-posed scenario - ground_truth "
+            "unchanged, notes explain why, full analysis in data/manifest_reconciliation.md."
+        )
+        for r in retired_rows:
+            lines.append(f"**{r['id']}** — {r['explanation']} ({r['title']})")
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -388,7 +410,19 @@ def main() -> None:
     rows = []
     telemetries = []
     for scenario in scenarios:
-        if scenario.get("notes", "").strip().upper().startswith("RETIRED"):
+        notes = scenario.get("notes", "").strip()
+        if notes.upper().startswith("RETIRED"):
+            row = {
+                "id": scenario["id"], "expected_branch": scenario["expected_branch"], "actual_branch": "RETIRED",
+                "branch_pass": None, "f1_localization": None, "exact_match": None, "rca_top1": None,
+                "rca_hit_at_2": None, "evidence_recall_at_5": None, "hallucinated_cause": False,
+                "tier": None, "pass": None, "planted": scenario["ground_truth"].get("planted", False),
+                "difficulty": scenario["difficulty"], "title": scenario["title"],
+                "explanation": notes, "retired": True,
+            }
+            rows.append(row)
+            if args.verbose:
+                print(f"{row['id']}: RETIRED — {notes[:80]}")
             continue
         try:
             findings = _run_with_deadline(run_scenario, scenario, timeout_seconds=SCENARIO_TIMEOUT_SECONDS)

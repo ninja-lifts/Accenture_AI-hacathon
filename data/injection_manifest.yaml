@@ -190,9 +190,15 @@ scenarios:
     tests_criterion: [OBJ-4, OBJ-5, PROTO-2]
     difficulty: hard
     notes: >
-      Roughly 45/40 split with 15% unexplained. The engine must return two ranked
-      drivers with shares - not pick one and pretend. Reporting the unexplained
-      residual is part of the pass condition.
+      RETIRED - effectively no effect planted (-0.1% measured vs -6.8%
+      declared magnitude_pct; see data/manifest_reconciliation.md). Ill-posed
+      test: the declared "roughly 45/40 split with 15% unexplained" two-cause
+      design never materialised in the generated data at a measurable
+      magnitude, so there is no real movement here for the engine to localize
+      or decompose. Original design intent, for reference: two co-equal
+      contributors (a warehouse capacity shortfall and a competitor price cut
+      in Large Appliances), West region, meant to force the engine to return
+      two ranked drivers with shares rather than pick one and pretend.
 
   - id: SC-08
     title: "NEGATIVE CONTROL - a real, material movement with no cause planted"
@@ -382,12 +388,19 @@ scenarios:
     tests_criterion: [OBJ-6, PROTO-10]
     difficulty: adversarial
     notes: >
-      The correct localization is a 4-order cell, below min_cell_size 25. Pass
-      condition: the engine rolls up to region level, states that it did and why,
-      and increments findings.security.cells_suppressed. Scored as correct
-      localization at the disclosed granularity - suppressing is the right
-      answer, and the scorer must not penalise it. Define that scoring rule in
-      docs/04_EVALUATION_PLAN.md before you run this, not after.
+      RETIRED - true_segment is under-specified: it declares 2 dimensions
+      (region, category) but data/generate.py actually plants the effect at 3
+      (region, category, channel: Retail) - see the SC-15 three-way analysis
+      in data/manifest_reconciliation.md. The scoring key itself is wrong: the
+      declared 2-dim segment measures +12.0% (wrong sign) because it is
+      swamped by three untouched channels sharing the same region/category,
+      while the true 3-dim cell measures -84.4%. Original design intent, for
+      reference: the correct localization is a 4-order cell, below
+      min_cell_size 25, meant to force the engine to roll up to region level,
+      state that it did and why, and increment
+      findings.security.cells_suppressed - scored as correct at the disclosed
+      granularity. That design is sound; the true_segment field encoding it
+      is not.
 
   - id: SC-16
     title: "Stale source - freshness degrades the claim"
