@@ -757,6 +757,130 @@ software does not work that way and every judge knows it.
   both scenarios' full `ground_truth` blocks are still present and unedited
   in the manifest.
 
+## 020 — A real number can be reattached to the wrong claim; the validator, and the prompt's own worked example, both let it through
+**Date:** 2026-08-30 · **Phase:** 5 · **Commit:** `21f6b3f`
+
+- **Evidence:** A live SC-01 narration (first genuine live run, `openai/gpt-oss-120b`
+  via Groq): headline said "Net revenue... fell 23.5% (Rs 35 lakh) in the
+  South region for the Audio category," then the next sentence said a
+  volume shortfall "represents 96.7% of the total gap." Both cannot be true
+  of the same quantity - South's real share of the category-wide movement
+  is Rs 27.24 lakh (77.8%), not Rs 35 lakh, and "96.7% of the total gap" is
+  only true relative to a *third*, smaller number (South's own DiD-measured
+  decline, Rs 13.35 lakh) that the sentence never named. Every individual
+  digit was real and traced back to the findings object -
+  `engine/validator.py::validate` pools every number in the whole object
+  into one flat set and only checks presence, so it passed. Root cause
+  traced one layer further: `prompts/narrate.md`'s own worked example used
+  `-8.2% / Rs 3.1 crore, "in the South"` - the *manifest's declared* SC-01
+  magnitude (entry 019), never anything the engine computes - modelling the
+  exact misattribution the model went on to produce.
+- **Problem:** Two distinct gaps, not one. (1) No mechanism catches a real
+  number reattached to the wrong scope - `answer.localization[]` (a
+  segment's share of the headline) and `answer.decomposition[]` (that
+  segment's own separately-measured decline) can legitimately both contain
+  a number that's "about the same segment," and nothing enforced that a
+  sentence naming a segment uses that segment's own figures rather than the
+  unscoped `headline_delta_pct`/`_abs`. (2) The prompt's only worked example
+  taught the failure mode it was meant to prevent.
+- **Decision:** Two validator changes plus a prompt fix, not a validator
+  rewrite. **Per-sentence scoping:** a sentence whose `tier_from` matches
+  `drivers[N]` and whose text names a segment (keyword-matched against
+  `answer.localization[].dimensions` values - cheap, no NLU) may not draw on
+  the unscoped headline numbers; everything else is unaffected, including
+  the `headline` field itself, which is the one place meant to state the
+  run's unscoped movement and so is exempt by construction. Caught in
+  testing against the real object, not the minimal unit fixture: a plain
+  `allowed - headline_numbers` set difference missed
+  `answer.action.expected_impact.value`, which independently carries the
+  same magnitude as `headline_delta_abs` but stored positive where the
+  headline is signed negative - two distinct floats to a set, one number to
+  a reader. Fixed with a magnitude/tolerance-aware exclusion
+  (`_exclude_by_magnitude`) matching `_accounted_for`'s own sign-blind
+  comparison, not a literal set difference. **Prompt rule 8:** any
+  "X, representing Y% of Z" construction must name what Z *refers to* in
+  the same clause - deliberately not "must state Z's value": the ambiguous
+  denominator in the observed bug (South's own Rs 13.35 lakh decline) isn't
+  itself a number anywhere in the findings object, only derivable by
+  subtracting two others, so requiring it be *stated* would force the model
+  to invent exactly the kind of number the validator exists to reject.
+  Naming the *scope* in words removes the ambiguity without that trap.
+  **Worked example replaced** with one built from SC-01's real findings
+  object, correctly scoped, verified against the real (fixed) validator
+  before committing it (see Change).
+- **Change:** `engine/validator.py` - `_narration_sentences` (replaces
+  `_narration_text_fields`, now carries `tier_from`), `_dimension_values`,
+  `_names_a_segment`, `_headline_numbers`, `_exclude_by_magnitude`,
+  `validate()` applies the per-sentence exclusion. `prompts/narrate.md` -
+  new hard rule 8; worked example replaced. `engine/stages/s07_narrate.py` -
+  new `_trim_for_narration()`: evidence deduplicated across drivers into one
+  shared pool (Stage 05 attaches the *same* retrieved documents to every
+  candidate driver - SC-01's two drivers sent the identical 6
+  documents/snippets twice, 34% of the object, pure duplication) and
+  `localization` trimmed to the top 2 non-suppressed rows (never referenced
+  by the prompt at all). Applied only to the narrate LLM payload -
+  `outcome_draft` itself, the schema-validated findings object, and
+  `eval/metrics.py::evidence_recall_at_5`'s scoring input are all untouched,
+  full detail. New tests in
+  `tests/test_validator_blocks_invented_numbers.py`: the exact broken SC-01
+  sentence now rejected, the correctly-scoped equivalent still passes, the
+  headline field's exemption is explicit and tested.
+- **Result:** `pytest` 12/12. Measured against the real SC-01 payload: 15,374
+  → 9,934 chars (-35.4%). Re-ran SC-01 live (verbatim narration and the
+  `force_live` regression this surfaced - see entry 021): **0 validator
+  retries**, passed on the first attempt, `tokens_in=4094 tokens_out=1173
+  cost=$0.02988` (down from the pre-trim probe's `tokens_in=4924
+  tokens_out=1652 cost=$0.03955`). Headline stated the unscoped category
+  movement with no segment named; the localization-sourced sentence named
+  "the South segment's own decline" as its denominator in words, no
+  fabricated number; zero internal contradiction. `schemas/findings.schema.json`
+  validation: 0 errors.
+
+## 021 — A resumable cache silently defeated the narrate retry loop's whole reason to exist
+**Date:** 2026-08-30 · **Phase:** 5 · **Commit:** `21f6b3f`
+
+- **Evidence:** Re-running SC-01 live to verify entry 020's fix (first
+  attempt, under the new trimmed payload): `validator_retries=2`, final
+  output was the *template* fallback, not a live narration - despite the
+  log showing a live call genuinely succeeding on the first attempt. The
+  narration text was literally `_template_answer`'s boilerplate
+  ("The movement was driven by: <driver statement>"), not model prose.
+- **Problem:** `engine/stages/s07_narrate.py`'s retry loop calls
+  `llm_client.complete("narrate", payload, ctx=ctx)` with the *identical*
+  `payload` on every attempt (same `outcome_draft`/persona - nothing in the
+  loop changes it). `prompts/narrate.md` runs at `temperature: 0.2`
+  specifically so a validator-rejected attempt has a real chance at a
+  different result on retry - but entry 018's resumable-cache change
+  (`complete()` checks the cache *before* deciding whether to go live) means
+  an identical payload hashes to an identical cache key, so attempt 2
+  "resumed" attempt 1's own just-written, already-rejected response instead
+  of sampling again. Every attempt after the first was validating the exact
+  same text against itself. A real regression, introduced by a fix built for
+  a different purpose (batch-level resumability across separate runs) that
+  never considered within-run retries of an intentionally-stochastic call.
+- **Decision:** Give the caller a way to say "this exact retry needs a
+  genuinely fresh sample, not the cache" - `complete()` gains
+  `force_live: bool = False`, skipping the cache-hit branch only when both
+  `force_live` and live mode are true (a no-op in replay/offline mode, so
+  the offline/deterministic guarantee is untouched). `s07_narrate.py` passes
+  `force_live=(attempt > 0)` - the first attempt still checks the cache
+  (preserving batch resumability for a fresh scenario), every retry after it
+  bypasses the cache entirely and overwrites the stale entry with whatever
+  comes back, so a later resumed run picks up the response that ultimately
+  passed validation, not the one that failed.
+- **Change:** `engine/llm_client.py::complete()` (`force_live` parameter,
+  `skip_cache_read` gate); `engine/stages/s07_narrate.py` (retry loop passes
+  it); new `tests/test_llm_client_force_live.py` - asserts a second call
+  with an identical payload resumes from cache by default, `force_live=True`
+  forces a fresh live sample instead, and that fresh sample becomes what a
+  later call resumes from (the overwrite, not just a bypass).
+- **Result:** `pytest` 12/12. Deleted the one stale cache entry the broken
+  run had written and re-ran SC-01 live: `validator_retries=0`, a genuine
+  live narration on the first attempt (entry 020's Result). Found and fixed
+  entirely by re-running the real thing live, immediately after landing a
+  change meant to help - exactly the discipline `CLAUDE.md` asks this
+  project to keep applying to itself, not just to the model's output.
+
 ---
 
 <!--
