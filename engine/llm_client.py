@@ -200,12 +200,17 @@ def _call_live_gemini(settings: config.Settings, system: str, user: str, meta: d
 
     Confirmed empirically (see CHANGELOG.md), not assumed: this model thinks
     by default and there is no supported way to turn it off -
-    `thinkingConfig: {thinkingBudget: 0}` is rejected outright with a 400. A
-    trivial one-word prompt still spent 90 tokens on `thoughtsTokenCount`
-    before the visible answer; under `max_output_tokens`, the whole budget
-    goes to thinking and the visible response comes back empty
-    (`finishReason: MAX_TOKENS`, `content: {}`) - the same failure shape as
-    Groq's reasoning models, same fix: budget generously rather than exactly."""
+    `thinkingConfig: {thinkingBudget: 0}` is rejected outright with a 400.
+    Thinking-token consumption scales with prompt complexity far more than
+    the trivial-prompt test suggested: a one-word reply spent 90 tokens on
+    `thoughtsTokenCount`, but a real SC-04 narrate call spent roughly
+    2,700-2,800 of a 2,900-token budget on thinking, leaving only 111 for
+    the visible answer and truncating it mid-string - genuinely incomplete
+    JSON, not the fenced-wrapper case `_clean_gemini_json_text` handles.
+    Same failure shape as Groq's reasoning models either way: budget
+    generously rather than exactly, with a large flat floor rather than a
+    multiplier alone, since thinking cost is not simply proportional to the
+    declared output size."""
     model = settings.llm_model or "gemini-3.6-flash"
     endpoint = settings.llm_endpoint or (
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -213,7 +218,7 @@ def _call_live_gemini(settings: config.Settings, system: str, user: str, meta: d
     declared_max = meta.get("max_output_tokens", 1024)
     generation_config: dict[str, Any] = {
         "temperature": meta.get("temperature", 0),
-        "maxOutputTokens": max(declared_max * 3, declared_max + 2000),
+        "maxOutputTokens": max(declared_max * 3, declared_max + 2000, 8000),
     }
     if meta.get("output_format") == "json":
         generation_config["responseMimeType"] = "application/json"
