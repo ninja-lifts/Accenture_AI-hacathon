@@ -162,7 +162,7 @@ def main(scenarios: list[dict[str, Any]], out_path: str, *, verbose: bool = Fals
         "",
         "# Baselines",
         "",
-        "### Q2 - same 17 scenarios",
+        f"### Q2 - {len(scenarios)} scenarios (RETIRED scenarios excluded - see data/manifest_reconciliation.md)",
         "| ID | GlassBox (see eval/scorecard.md) | B1 naive drill-down | B3 single LLM prompt |",
         "|----|----|----|----|",
     ]

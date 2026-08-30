@@ -404,7 +404,11 @@ def main() -> None:
     if args.baseline:
         from eval.baselines import run_all as run_baselines
 
-        run_baselines.main(scenarios, args.out, verbose=args.verbose)
+        retired = [s["id"] for s in scenarios if s.get("notes", "").strip().upper().startswith("RETIRED")]
+        baseline_scenarios = [s for s in scenarios if s["id"] not in retired]
+        if retired and args.verbose:
+            print(f"skipping retired scenario(s), not run against baselines either: {', '.join(retired)}")
+        run_baselines.main(baseline_scenarios, args.out, verbose=args.verbose)
         return
 
     rows = []
