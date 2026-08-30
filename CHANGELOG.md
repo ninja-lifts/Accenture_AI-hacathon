@@ -525,6 +525,71 @@ software does not work that way and every judge knows it.
   commit hash; `eval/cost_receipt.md`'s latency line moved with normal
   wall-clock noise (tokens/cost still 0/0 in replay mode, byte-identical).
 
+## 016 — First live run hung indefinitely; no wall-clock read timeout on the provider call
+**Date:** 2026-08-30 · **Phase:** 6 · **Commit:** `0d46a85`
+
+- **Evidence:** The first live run of the full 17-scenario harness (real
+  Groq key, `GLASSBOX_REPLAY=0`) hung: the process stayed alive
+  (confirmed via `ps`, PID present, not crashed), but no new replay-cache
+  entry was written for 19+ minutes - well past the old retry logic's
+  worst-case bound of ~13.5 minutes (5 attempts x 150s timeout + 429
+  backoff), and no exception was ever raised.
+- **Problem:** `_urlopen_with_retry` called
+  `urllib.request.urlopen(req, timeout=150)` and then `resp.read()` on the
+  same socket. That `timeout` is a *per-socket-operation* timeout, not a
+  wall-clock deadline on the whole request - `resp.read()` re-arms it on
+  every successful `recv()`, so a connection trickling bytes in slower than
+  150s apart never trips it, however long the *total* transfer takes. The
+  retry loop's `except urllib.error.HTTPError` only catches a completed
+  response with a 4xx/5xx status; a raw socket stall doesn't raise that at
+  all, so it wasn't retried either - it just hung. (Checked and ruled out
+  as contributing causes: no `stream` flag is set in either provider's
+  request body, and grepping `engine/` found nothing blocking on stdin -
+  see the diagnosis reported in-session before any code changed.)
+- **Decision:** No single `urlopen(timeout=N)` value fixes a
+  per-operation-timeout problem - the fix has to add an actual wall-clock
+  deadline urllib doesn't provide natively, without a new dependency
+  (Rule 9 rules out swapping to `requests`, which does support a
+  connect/read timeout tuple natively). Chose a daemon-thread +
+  `queue.Queue.get(timeout=...)` pattern over
+  `concurrent.futures.ThreadPoolExecutor` specifically because the
+  executor's context-manager exit calls `shutdown(wait=True)`, which
+  blocks until the thread actually finishes - the identical hang, one
+  level up. A bare daemon thread can be safely abandoned on timeout (it
+  won't block process exit) even though nothing in Python can cancel a
+  thread already blocked in a C-level `recv()`.
+- **Change:** `engine/llm_client.py` - `_do_single_attempt` runs each
+  provider request in a daemon thread; `_urlopen_with_retry` awaits it
+  against a hard `_MAX_TOTAL_SECONDS=300` wall-clock budget shared across
+  all `_MAX_ATTEMPTS=5` attempts (not just `_SOCKET_TIMEOUT_SECONDS=60` per
+  operation), with jittered backoff on 429/`OSError`/`URLError`, and raises
+  `TimeoutError` on exhaustion - never silently degrades. Both adapters and
+  `_call_live` take a `label` (scenario id + stage) threaded through
+  `complete()` (new `ctx["scenario_id"]`, set via a new optional
+  `pipeline.run(scenario_id=...)` kwarg - additive, like `trace` in entry
+  012) and B3's direct `_call_live` call, printed to stderr on every
+  attempt/success/failure/retry. `_call_live` adds a 3s delay after every
+  live call - the one point `complete()` and B3 both go through - as a
+  first line of defence against a rate-limit burst, ahead of the existing
+  429 backoff. `eval/harness.py` adds an independent, defence-in-depth
+  `_run_with_deadline()` (same daemon-thread pattern) wrapping each
+  scenario's run in a `SCENARIO_TIMEOUT_SECONDS=700` outer deadline - a
+  stall anywhere, not just inside `llm_client.py`'s own bound, now becomes
+  an ordinary scenario `ERROR` row through the harness's existing exception
+  handling rather than stalling the batch.
+- **Result:** `pytest` 8/8 - but only once forced to `GLASSBOX_REPLAY=1`
+  explicitly. A plain `pytest` run picked up `.env`'s now-live
+  configuration and actually went live for ~12 minutes, hitting a real
+  Groq 429 (`Retry-After` around 300s) on two tests - not a code
+  regression (the same 8 pass under replay), but a real, unplanned cost
+  from a genuine gap: the test suite doesn't force replay mode itself, it
+  inherits whatever `GLASSBOX_REPLAY` the environment has. Noted here
+  rather than fixed unilaterally, since it's a test-harness scoping
+  question outside what was asked. The two failures are themselves
+  evidence the fix works: `TimeoutError` raised loudly after exhausting
+  the wall-clock budget, in a scenario where the old code would have hung
+  the same way it did during the run this entry is about.
+
 ---
 
 <!--
