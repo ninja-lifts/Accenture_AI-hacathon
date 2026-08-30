@@ -140,11 +140,20 @@ def _call_live_anthropic(settings: config.Settings, system: str, user: str, meta
     return LLMResult(text=text, tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost, from_cache=False)
 
 
+_OPENAI_COMPATIBLE_ENDPOINTS = {
+    "groq": "https://api.groq.com/openai/v1/chat/completions",
+    "openai": "https://api.openai.com/v1/chat/completions",
+}
+
+
 def _call_live_openai_compatible(settings: config.Settings, system: str, user: str, meta: dict[str, Any], label: str = "?") -> LLMResult:
-    """Groq (and anything else that speaks the OpenAI chat-completions shape)
-    over the same dependency-free urllib path as the Anthropic adapter -
-    still no new pinned dependency, just a second, equally minimal HTTP call."""
-    endpoint = settings.llm_endpoint or "https://api.groq.com/openai/v1/chat/completions"
+    """Groq and OpenAI itself (and anything else that speaks the OpenAI
+    chat-completions shape) over the same dependency-free urllib path as the
+    Anthropic adapter - still no new pinned dependency, just the same
+    minimal HTTP call against a different default endpoint per provider."""
+    endpoint = settings.llm_endpoint or _OPENAI_COMPATIBLE_ENDPOINTS.get(
+        settings.llm_provider, _OPENAI_COMPATIBLE_ENDPOINTS["groq"]
+    )
     max_tokens = meta.get("max_output_tokens", 1024)
     if "gpt-oss" in settings.llm_model or "reasoning" in settings.llm_model:
         # Reasoning-style models spend part of max_tokens on an internal
@@ -370,6 +379,7 @@ _LIVE_ADAPTERS = {
     "anthropic": _call_live_anthropic,
     "groq": _call_live_openai_compatible,
     "gemini": _call_live_gemini,
+    "openai": _call_live_openai_compatible,
 }
 
 
