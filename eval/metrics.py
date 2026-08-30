@@ -5,7 +5,13 @@ Localization (Stage 03) - comparable to published baselines:
     exact_match          predicted cell set == true cell set
 
 Root cause (whole pipeline) - our contribution, no published baseline:
-    rca_top1             true cause is the highest-ranked driver
+    rca_top1             true cause is the highest-ranked driver - computed
+                          inline in eval/harness.py::score_scenario as an
+                          exact true_segment match on the top driver, not by
+                          a function here: the engine never sees the
+                          generator's internal cause ids (by design), so
+                          there is nothing a true_cause_id-keyed function in
+                          this module could actually check
     rca_hit_at_2         true cause is in the top 2 drivers
 
 Retrieval (Stage 05):
@@ -59,21 +65,6 @@ def f1_localization(predicted: set[tuple[str, str]], true_segment: dict[str, Any
 def exact_match(predicted: set[tuple[str, str]], true_segment: dict[str, Any] | None) -> bool:
     true_set = {(k, v) for k, v in (true_segment or {}).items() if v is not None}
     return predicted == true_set
-
-
-def rca_top1(findings: dict[str, Any], true_cause_id: str | None) -> bool | None:
-    """None means not applicable (no true cause planted, or not an answer)."""
-    if true_cause_id is None:
-        return None
-    if findings.get("kind") == "no_alert" or findings["outcome"]["branch"] != "answer":
-        return False
-    drivers = findings["outcome"]["answer"]["drivers"]
-    if not drivers:
-        return False
-    # We don't have the generator's internal cause ids inside the findings
-    # object (by design - the engine never sees ground truth), so top-1 is
-    # judged by whether the top driver's dimensions match the true segment.
-    return True  # caller combines with localization match; see harness
 
 
 def rca_hit_at_2(findings: dict[str, Any], true_segment: dict[str, Any] | None) -> bool:

@@ -29,7 +29,7 @@ class _FakeSettings:
 def test_force_live_ignores_a_cached_entry_from_an_earlier_attempt(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "load", lambda: _FakeSettings(replay_cache=str(tmp_path)))
 
-    responses = iter(["first response text", "second response text"])
+    responses = iter(['{"headline": "first response text", "sentences": []}', '{"headline": "second response text", "sentences": []}'])
     calls: list[str] = []
 
     def _fake_call_live(settings, system, user, meta, label="?"):
@@ -42,27 +42,54 @@ def test_force_live_ignores_a_cached_entry_from_an_earlier_attempt(tmp_path, mon
     payload = {"FINDINGS": {"answer": {}}, "PERSONA": "cfo"}
 
     r1 = llm_client.complete("narrate", payload)
-    assert r1.text == "first response text"
+    assert r1.text == '{"headline": "first response text", "sentences": []}'
     assert len(calls) == 1
 
     # Without force_live, an identical payload resumes from the cache attempt
     # 1 just wrote - it never reaches _call_live again. This is correct for
     # batch resumability, but exactly what a validator-retry loop must avoid.
     r2 = llm_client.complete("narrate", payload)
-    assert r2.text == "first response text"
+    assert r2.text == '{"headline": "first response text", "sentences": []}'
     assert r2.from_cache is True
     assert len(calls) == 1
 
     # force_live=True must skip that cache read and get a genuinely fresh
     # sample - what engine/stages/s07_narrate.py's retry loop actually needs.
     r3 = llm_client.complete("narrate", payload, force_live=True)
-    assert r3.text == "second response text"
+    assert r3.text == '{"headline": "second response text", "sentences": []}'
     assert r3.from_cache is False
     assert len(calls) == 2
 
     # And that fresh result is now what a later resumed run picks up -
     # force_live overwrites the stale cache entry, it doesn't just bypass it.
     r4 = llm_client.complete("narrate", payload)
-    assert r4.text == "second response text"
+    assert r4.text == '{"headline": "second response text", "sentences": []}'
     assert r4.from_cache is True
     assert len(calls) == 2
+
+
+def test_unparseable_json_response_is_not_cached(tmp_path, monkeypatch):
+    """A genuinely truncated/malformed live response must not poison the
+    cache for a future run - this is exactly what happened with a real
+    Gemini thinking-token truncation (CHANGELOG.md entry 023): the broken
+    text got cached, and a later pytest run in replay mode correctly
+    refused to treat it as a valid narration. The caller still gets the
+    broken result back (its own retry/error handling is unaffected) - only
+    the cache write is skipped."""
+    monkeypatch.setattr(config, "load", lambda: _FakeSettings(replay_cache=str(tmp_path)))
+
+    def _fake_call_live(settings, system, user, meta, label="?"):
+        return llm_client.LLMResult(
+            text='{"headline": "cut off mid-string, no closing brace',
+            tokens_in=1, tokens_out=1, cost_usd=0.0, from_cache=False,
+        )
+
+    monkeypatch.setattr(llm_client, "_call_live", _fake_call_live)
+
+    payload = {"FINDINGS": {"answer": {}}, "PERSONA": "cfo"}
+
+    r1 = llm_client.complete("narrate", payload)
+    assert not r1.text.strip().endswith("}")  # the broken text, returned as-is to the caller
+
+    cache_files = list((tmp_path / "narrate").glob("*.json")) if (tmp_path / "narrate").exists() else []
+    assert cache_files == [], "an unparseable response must not be written to the replay cache"

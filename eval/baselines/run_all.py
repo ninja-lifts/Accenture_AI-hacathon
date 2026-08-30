@@ -122,19 +122,30 @@ def main(scenarios: list[dict[str, Any]], out_path: str, *, verbose: bool = Fals
     rows = []
     for scenario in scenarios:
         gt = scenario["ground_truth"]
-        b1 = run_b1(scenario, con, all_contracts, settings)
-        true_seg = {(k, v) for k, v in (gt.get("true_segment") or {}).items() if v is not None}
-        b1_seg = {(k, v) for k, v in b1["segment"].items()}
-        b1_correct = bool(true_seg) and b1_seg == true_seg
-        b1_hallucinated = (not gt.get("planted", False)) and b1["cause_statement"] is not None
+        try:
+            b1 = run_b1(scenario, con, all_contracts, settings)
+            true_seg = {(k, v) for k, v in (gt.get("true_segment") or {}).items() if v is not None}
+            b1_seg = {(k, v) for k, v in b1["segment"].items()}
+            b1_correct = bool(true_seg) and b1_seg == true_seg
+            b1_hallucinated = (not gt.get("planted", False)) and b1["cause_statement"] is not None
 
-        b3_payload = build_b3_payload(scenario)
-        b3_text = run_b3(scenario, b3_payload, settings)
-        b3_answered = not b3_text.startswith(("NOT RUN", "N/A"))
-        b3_hallucinated = (
-            b3_live and b3_answered and (not gt.get("planted", False))
-            and not any(p in b3_text.lower() for p in ("cannot determine", "no clear cause", "insufficient", "unable to establish", "not enough evidence"))
-        )
+            b3_payload = build_b3_payload(scenario)
+            b3_text = run_b3(scenario, b3_payload, settings)
+            b3_answered = not b3_text.startswith(("NOT RUN", "N/A"))
+            b3_hallucinated = (
+                b3_live and b3_answered and (not gt.get("planted", False))
+                and not any(p in b3_text.lower() for p in ("cannot determine", "no clear cause", "insufficient", "unable to establish", "not enough evidence"))
+            )
+        except Exception as exc:  # noqa: BLE001 - a scenario failing (a live-call
+            # rate limit or timeout, most likely) must not cost every scenario
+            # already answered before it. eval/harness.py's main loop has always
+            # caught this per-scenario; this loop didn't, and a single Gemini
+            # 429 crashed a batch that had already recorded two real answers.
+            b1 = {"segment": {}, "cause_statement": None}
+            b1_correct = False
+            b1_hallucinated = False
+            b3_text = f"ERROR: {type(exc).__name__}: {exc}"
+            b3_hallucinated = False
 
         rows.append(
             {
@@ -178,11 +189,13 @@ def main(scenarios: list[dict[str, Any]], out_path: str, *, verbose: bool = Fals
         f"B1 totals: {n_b1_correct}/{len(rows)} exact segment match · "
         f"{n_b1_hallucinated}/{len(rows)} scenarios where B1 named a cause on an unplanted movement",
     ]
+    n_b3_errored = sum(1 for r in rows if r["b3_text"].startswith("ERROR:"))
     if b3_live:
         lines.append(
-            f"B3 totals: run live on {sum(1 for r in rows if not r['b3_text'].startswith(('NOT RUN', 'N/A')))}/{len(rows)} scenarios · "
+            f"B3 totals: run live on {sum(1 for r in rows if not r['b3_text'].startswith(('NOT RUN', 'N/A', 'ERROR:')))}/{len(rows)} scenarios · "
             f"{n_b3_hallucinated} scenarios where B3 asserted a cause on an unplanted movement without hedging "
             f"(heuristic keyword check on its own text - read the full row, this count is not authoritative)"
+            + (f" · {n_b3_errored} errored (see row text)" if n_b3_errored else "")
         )
     lines += [
         "",

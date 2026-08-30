@@ -444,7 +444,17 @@ def complete(
     the hard way, deterministically replaying attempt 1's failed response for
     every subsequent attempt and burning the whole retry budget on one
     generation. Real regression, caught by re-running SC-01 live after this
-    file's own resumability change landed - see CHANGELOG.md entry 020."""
+    file's own resumability change landed - see CHANGELOG.md entry 020.
+
+    json_mode (default True, matching every current prompt's
+    output_format: json) gates whether a live response gets cached at all:
+    a response that doesn't parse as JSON is returned to the caller as
+    normal - its own retry/error handling still runs unchanged - but is not
+    written to eval/replay_cache/. Previously written unconditionally: a
+    genuinely truncated Gemini response (entry 023) got cached, and a later
+    pytest run in replay mode correctly refused to silently treat the
+    corrupted cached text as valid - not a new bug at the time, but exactly
+    the failure this gate exists to prevent from recurring."""
     settings = config.load()
 
     if ctx is not None:
@@ -483,14 +493,25 @@ def complete(
     elif use_live:
         label = f"{(ctx or {}).get('scenario_id') or (ctx or {}).get('run_id', '-')}/{prompt_id}"
         result = _call_live(settings, system, user, meta, label)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            json.dumps(
-                {"text": result.text, "tokens_in": result.tokens_in, "tokens_out": result.tokens_out},
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        cacheable = True
+        if json_mode:
+            try:
+                json.loads(result.text)
+            except ValueError as exc:
+                cacheable = False
+                print(f"[llm] {prompt_id}/{key[:12]} response is not valid JSON (json_mode=True: "
+                      f"{type(exc).__name__}) - not caching it, so a future run doesn't resume a "
+                      "response that was never usable. The caller still receives it and handles "
+                      "the failure through its normal retry/error path.", file=sys.stderr)
+        if cacheable:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps(
+                    {"text": result.text, "tokens_in": result.tokens_in, "tokens_out": result.tokens_out},
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
     else:
         raise LLMCacheMiss(prompt_id, key)
 
