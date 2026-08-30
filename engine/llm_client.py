@@ -327,9 +327,17 @@ def complete(
     Raises LLMCallCapExceeded if this would be the 3rd call within the run
     tracked by `ctx` (pass the pipeline context so the cap is enforced across
     Stage 00 and Stage 07, not just within one call site). Raises
-    LLMCacheMiss when replay mode has no cached entry - callers must catch
-    this and use a deterministic fallback; it is never appropriate to let it
-    crash the run.
+    LLMCacheMiss when there's no cached entry AND live calls aren't available
+    (replay mode, or no key) - callers must catch this and use a
+    deterministic fallback; it is never appropriate to let it crash the run.
+
+    A cache hit is checked FIRST, before deciding whether to go live - live
+    mode means "call live for anything not yet captured," not "always call
+    live and overwrite what's already there." This is what makes a live batch
+    resumable: a run interrupted by a rate limit (a real Groq 429 with
+    Retry-After: 300s cost us a partial batch once - see CHANGELOG.md) can be
+    re-run and picks up exactly where it left off, at no extra cost, instead
+    of re-billing every call made before the interruption.
     """
     settings = config.load()
 
@@ -349,7 +357,19 @@ def complete(
 
     use_live = (not settings.replay_mode) and bool(settings.llm_api_key)
 
-    if use_live:
+    if cache_path.exists():
+        if use_live:
+            print(f"[llm] {prompt_id}/{key[:12]} resumed from {cache_path} - no live call made",
+                  file=sys.stderr)
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        result = LLMResult(
+            text=cached["text"],
+            tokens_in=cached.get("tokens_in", 0),
+            tokens_out=cached.get("tokens_out", 0),
+            cost_usd=0.0,
+            from_cache=True,
+        )
+    elif use_live:
         label = f"{(ctx or {}).get('scenario_id') or (ctx or {}).get('run_id', '-')}/{prompt_id}"
         result = _call_live(settings, system, user, meta, label)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -359,15 +379,6 @@ def complete(
                 indent=2,
             ),
             encoding="utf-8",
-        )
-    elif cache_path.exists():
-        cached = json.loads(cache_path.read_text(encoding="utf-8"))
-        result = LLMResult(
-            text=cached["text"],
-            tokens_in=cached.get("tokens_in", 0),
-            tokens_out=cached.get("tokens_out", 0),
-            cost_usd=0.0,
-            from_cache=True,
         )
     else:
         raise LLMCacheMiss(prompt_id, key)
