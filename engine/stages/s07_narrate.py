@@ -80,6 +80,49 @@ def _template_clarification(outcome_draft: dict[str, Any], persona: str) -> dict
     return {"headline": clar["question"], "sentences": [{"text": clar["question"], "tier_from": "clarification"}]}
 
 
+def _trim_for_narration(outcome_draft: dict[str, Any]) -> dict[str, Any]:
+    """A lighter payload for the narrate LLM call only - never mutates or
+    replaces outcome_draft itself, which is what the schema-validated
+    findings object, the UI, and evidence-recall scoring
+    (eval/metrics.py::evidence_recall_at_5 reads drivers[].evidence directly)
+    are built from. Two cuts, measured against a real captured SC-01 payload
+    (CHANGELOG.md entry 020): Stage 05 attaches the SAME retrieved evidence
+    pool to every candidate driver, so a scenario with 2 drivers sent the
+    identical 6 documents/snippets twice (34% of the object, pure
+    duplication) - deduplicated here into one pool, drivers keep only the
+    ids they cite. localization's lower-ranked rows (3rd-8th) are dropped -
+    prompts/narrate.md never references localization at all, and the
+    unused rows are also unnecessary surface for a number to get attached to
+    the wrong segment. Together this roughly halves the payload without
+    removing any content the prompt actually asks for."""
+    ans = outcome_draft.get("answer")
+    if not isinstance(ans, dict):
+        return outcome_draft
+
+    evidence_pool: dict[str, dict[str, Any]] = {}
+    trimmed_drivers = []
+    for d in ans.get("drivers") or []:
+        d2 = dict(d)
+        ids = []
+        for e in d.get("evidence") or []:
+            doc_id = e.get("document_id")
+            if doc_id and doc_id not in evidence_pool:
+                evidence_pool[doc_id] = e
+            ids.append(doc_id)
+        d2["evidence_ids"] = ids
+        d2.pop("evidence", None)
+        trimmed_drivers.append(d2)
+
+    trimmed_ans = dict(ans)
+    trimmed_ans["drivers"] = trimmed_drivers
+    trimmed_ans["evidence_pool"] = list(evidence_pool.values())
+    trimmed_ans["localization"] = [s for s in (ans.get("localization") or []) if not s.get("suppressed")][:2]
+
+    trimmed = dict(outcome_draft)
+    trimmed["answer"] = trimmed_ans
+    return trimmed
+
+
 def run(ctx: dict[str, Any]) -> dict[str, Any]:
     branch = ctx["branch"]
     outcome_draft = ctx["outcome_draft"]
@@ -94,11 +137,19 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
     narration = None
     live_attempt_failed = False
     if branch in ("answer", "abstention"):
-        payload = {"FINDINGS": outcome_draft, "PERSONA": persona}
+        payload = {"FINDINGS": _trim_for_narration(outcome_draft), "PERSONA": persona}
         ctx["telemetry"].setdefault("validator_retries", 0)
         for attempt in range(ctx["settings"].max_validator_retries):
             try:
-                result = llm_client.complete("narrate", payload, ctx=ctx)
+                # force_live on retries: prompts/narrate.md runs at
+                # temperature 0.2 specifically so a rejected attempt has a
+                # real chance at a different result - the payload is
+                # identical across attempts (same outcome_draft/persona), so
+                # without this every attempt after the first would just
+                # replay attempt 1's cached (already-rejected) text via the
+                # resumable-cache path. See engine/llm_client.py::complete's
+                # own docstring and CHANGELOG.md entry 020.
+                result = llm_client.complete("narrate", payload, ctx=ctx, force_live=(attempt > 0))
             except llm_client.LLMCacheMiss:
                 # The legitimate offline path: no key, no cache entry for
                 # this exact payload. Nothing was attempted this call.

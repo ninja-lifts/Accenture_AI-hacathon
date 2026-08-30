@@ -52,6 +52,23 @@ check anything. If it is not in the findings object, it does not exist.
 7. **Levers.** Recommendations may only reference the lever supplied in
    `outcome.answer.action.lever`. You do not propose business actions of your
    own.
+8. **Name what a percentage is relative to.** This object can contain more
+   than one number that is legitimately "about" the same segment - a
+   segment's share of the overall movement (`answer.localization[].
+   contribution_pct`) is not the same figure as that segment's own
+   decomposition (`answer.decomposition[].contribution_pct`). Any
+   "X, representing Y% of Z" construction must name what Z refers to in the
+   same clause - "77.8% of the category-wide decline", "96.7% of the South
+   segment's own decline" - never an unqualified "the total gap" or "the
+   overall decline" that could mean more than one number already in this
+   object. You do not need to (and should not, unless it is itself a number
+   in the findings object) state Z's own magnitude - naming what it refers to
+   is what removes the ambiguity. Likewise, if a sentence names a specific
+   segment (e.g. "the South region"), any number attached to that sentence
+   must be that segment's own figure from `answer.localization` or
+   `answer.decomposition` - never the unscoped `headline_delta_pct`/
+   `headline_delta_abs`, which describe the whole run's scope, not one
+   segment within it.
 
 ## Persona register
 
@@ -63,11 +80,18 @@ check anything. If it is not in the findings object, it does not exist.
 
 ## Output
 
+Built from a real findings object (SC-01), correctly scoped - the headline
+states the run's own unscoped movement; the drivers[0] sentence names a
+segment and uses ONLY that segment's own localization figure, not the
+headline's; the decomposition sentence names what its percentage is relative
+to instead of saying "the total gap":
+
 ```json
 {
-  "headline": "Net revenue in the South fell 8.2% (Rs 3.1 crore) in the week to 14 Aug.",
+  "headline": "Net Revenue fell 23.5% (Rs 35 lakh) in the week to 14 Aug.",
   "sentences": [
-    { "text": "...", "tier_from": "drivers[0]" }
+    { "text": "The South region, within Audio, accounts for 77.8% of that category-wide decline - Rs 27.24 lakh.", "tier_from": "drivers[0]" },
+    { "text": "Within the South segment's own decline, a volume shortfall of Rs 12.9 lakh - 96.7% of it - was the dominant driver.", "tier_from": "decomposition" }
   ]
 }
 ```

@@ -86,17 +86,76 @@ def _accounted_for(n: float, allowed: set[float], *, rel_tol: float = 0.02, abs_
     return False
 
 
-def _narration_text_fields(narration: dict[str, Any]) -> list[str]:
-    fields: list[str] = []
+def _narration_sentences(narration: dict[str, Any]) -> list[tuple[str, str | None]]:
+    """(text, tier_from) pairs. `headline` has no tier_from of its own - it is
+    the one field allowed to state the run's unscoped movement, by
+    construction, so it is never subject to the segment-naming restriction
+    below."""
+    out: list[tuple[str, str | None]] = []
     headline = narration.get("headline")
     if isinstance(headline, str):
-        fields.append(headline)
+        out.append((headline, None))
     for s in narration.get("sentences", []) or []:
         if isinstance(s, dict) and isinstance(s.get("text"), str):
-            fields.append(s["text"])
+            out.append((s["text"], s.get("tier_from")))
         elif isinstance(s, str):
-            fields.append(s)
-    return fields
+            out.append((s, None))
+    return out
+
+
+_DRIVER_TIER_FROM_RE = re.compile(r"^drivers\[(\d+)\]")
+
+
+def _dimension_values(findings: dict[str, Any]) -> set[str]:
+    """Every dimension VALUE named across localization[] - segment names like
+    "South" or "Web" that a driver-sourced sentence might claim to describe."""
+    values: set[str] = set()
+    ans = findings.get("answer")
+    if not isinstance(ans, dict):
+        return values
+    for seg in ans.get("localization") or []:
+        for v in (seg.get("dimensions") or {}).values():
+            if isinstance(v, str):
+                values.add(v)
+    return values
+
+
+def _names_a_segment(text: str, dimension_values: set[str]) -> bool:
+    lowered = text.lower()
+    return any(re.search(rf"\b{re.escape(v.lower())}\b", lowered) for v in dimension_values)
+
+
+def _headline_numbers(findings: dict[str, Any]) -> set[float]:
+    ans = findings.get("answer")
+    if not isinstance(ans, dict):
+        return set()
+    out: set[float] = set()
+    for key in ("headline_delta_pct", "headline_delta_abs"):
+        v = ans.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out.add(float(v))
+    return out
+
+
+def _exclude_by_magnitude(
+    pool: set[float], to_exclude: set[float], *, rel_tol: float = 0.02, abs_tol: float = 0.05
+) -> set[float]:
+    """pool minus anything within `_accounted_for`'s own tolerance of an
+    excluded value's magnitude - not a literal set difference. A plain
+    `pool - to_exclude` misses e.g. `answer.action.expected_impact.value`
+    being the same magnitude as `headline_delta_abs` but stored positive
+    where the headline is signed negative: two distinct floats to a set,
+    same number to a reader, and `_accounted_for` itself is already
+    sign-blind (see its own docstring) - this exclusion has to match that or
+    it silently fails to close the loophole it exists for."""
+    excluded_abs = {abs(v) for v in to_exclude}
+    out: set[float] = set()
+    for v in pool:
+        av = abs(v)
+        if any(abs(av - ea) <= max(abs_tol, rel_tol * ea) for ea in excluded_abs):
+            continue
+        out.add(v)
+    return out
 
 
 def validate(narration: dict[str, Any], findings: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -109,14 +168,33 @@ def validate(narration: dict[str, Any], findings: dict[str, Any]) -> tuple[bool,
     arithmetic *combination* of two real numbers (e.g. summing two real
     percentages into a new one) is rejected, because the combined value was
     never itself a number in the findings object.
+
+    Per-sentence scoping (CHANGELOG.md entry 020): the global `allowed` pool
+    above catches invented numbers, but not a REAL number reattached to the
+    wrong claim - a live SC-01 narration once said "Net revenue dropped 23.5%
+    (Rs 35 lakh) in the South region" when 23.5%/Rs 35L is the category-wide
+    headline, not South's own number (South's own contribution is a
+    different, smaller figure, elsewhere in `answer.localization`). Every
+    digit was real, so the global check passed it. A sentence whose
+    `tier_from` is `drivers[N]` and which names a specific segment (matched
+    against `answer.localization[].dimensions` values) may not use the
+    unscoped `headline_delta_pct`/`headline_delta_abs` - it must reach for
+    that segment's own numbers instead. `headline` itself is exempt (see
+    `_narration_sentences`): it is the one field meant to state the unscoped
+    movement.
     """
     allowed: set[float] = set()
     _collect_findings_numbers(findings, allowed)
+    headline_numbers = _headline_numbers(findings)
+    dimension_values = _dimension_values(findings)
 
     unaccounted: list[str] = []
-    for text in _narration_text_fields(narration):
+    for text, tier_from in _narration_sentences(narration):
+        sentence_allowed = allowed
+        if tier_from and _DRIVER_TIER_FROM_RE.match(tier_from) and _names_a_segment(text, dimension_values):
+            sentence_allowed = _exclude_by_magnitude(allowed, headline_numbers)
         for n in extract_numerals(text):
-            if not _accounted_for(n, allowed):
+            if not _accounted_for(n, sentence_allowed):
                 unaccounted.append(f"{n!r} in: {text[:120]!r}")
 
     return (len(unaccounted) == 0, unaccounted)

@@ -320,6 +320,7 @@ def complete(
     *,
     json_mode: bool = True,
     ctx: dict[str, Any] | None = None,
+    force_live: bool = False,
 ) -> LLMResult:
     """Render prompts/{prompt_id}.md with payload, call the provider (or the
     replay cache), return the result.
@@ -338,7 +339,20 @@ def complete(
     Retry-After: 300s cost us a partial batch once - see CHANGELOG.md) can be
     re-run and picks up exactly where it left off, at no extra cost, instead
     of re-billing every call made before the interruption.
-    """
+
+    force_live=True skips that cache-hit check (still a no-op in replay mode,
+    since the branch below only takes effect when use_live is also true) -
+    for a caller that retries the SAME payload on purpose and needs a
+    genuinely fresh sample each time, not the first attempt's cached text
+    played back again. engine/stages/s07_narrate.py's retry loop is exactly
+    this case: prompts/narrate.md runs at temperature 0.2 specifically so a
+    validator-rejected attempt has a real chance of a different result next
+    try, but the payload (outcome_draft/persona) is identical across
+    attempts, so it hashes to the same cache key - resumability found this
+    the hard way, deterministically replaying attempt 1's failed response for
+    every subsequent attempt and burning the whole retry budget on one
+    generation. Real regression, caught by re-running SC-01 live after this
+    file's own resumability change landed - see CHANGELOG.md entry 020."""
     settings = config.load()
 
     if ctx is not None:
@@ -356,8 +370,13 @@ def complete(
     cache_path = _cache_path(settings, prompt_id, key)
 
     use_live = (not settings.replay_mode) and bool(settings.llm_api_key)
+    skip_cache_read = force_live and use_live
 
-    if cache_path.exists():
+    if skip_cache_read:
+        print(f"[llm] {prompt_id}/{key[:12]} force_live - ignoring any cached entry, calling live for a fresh sample",
+              file=sys.stderr)
+
+    if cache_path.exists() and not skip_cache_read:
         if use_live:
             print(f"[llm] {prompt_id}/{key[:12]} resumed from {cache_path} - no live call made",
                   file=sys.stderr)
