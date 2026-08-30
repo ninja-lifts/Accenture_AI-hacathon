@@ -13,6 +13,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import queue
+import random
+import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -23,6 +28,19 @@ from engine import config
 from engine import telemetry
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+# A hung live call is not hypothetical here - the first live run of this
+# session hung for 19+ minutes with the process alive and no exception ever
+# raised (see CHANGELOG.md). Root cause: urllib.request.urlopen(timeout=N)
+# is a per-socket-operation timeout, not a wall-clock deadline on the whole
+# request - resp.read() re-arms it on every successful recv(), so a
+# connection that trickles bytes in slowly enough never trips it, however
+# long the total transfer takes. These constants and _urlopen_with_retry
+# below exist specifically to make that structurally impossible.
+_SOCKET_TIMEOUT_SECONDS = 60  # catches a genuinely dead connect/recv fast
+_MAX_ATTEMPTS = 5
+_MAX_TOTAL_SECONDS = 300  # hard wall-clock ceiling across ALL attempts of one logical call
+_INTER_CALL_DELAY_SECONDS = 3  # defensive pacing; 429 backoff below is the second line of defence
 
 
 class LLMCallCapExceeded(Exception):
@@ -92,7 +110,7 @@ def _cache_path(settings: config.Settings, prompt_id: str, key: str) -> Path:
     return Path(settings.replay_cache) / prompt_id / f"{key}.json"
 
 
-def _call_live_anthropic(settings: config.Settings, system: str, user: str, meta: dict[str, Any]) -> LLMResult:
+def _call_live_anthropic(settings: config.Settings, system: str, user: str, meta: dict[str, Any], label: str = "?") -> LLMResult:
     endpoint = settings.llm_endpoint or "https://api.anthropic.com/v1/messages"
     body = json.dumps(
         {
@@ -113,7 +131,7 @@ def _call_live_anthropic(settings: config.Settings, system: str, user: str, meta
         },
         method="POST",
     )
-    data = _urlopen_with_retry(req)
+    data = _urlopen_with_retry(req, label)
     text = "".join(block.get("text", "") for block in data.get("content", []))
     usage = data.get("usage", {})
     tokens_in = usage.get("input_tokens", 0)
@@ -122,7 +140,7 @@ def _call_live_anthropic(settings: config.Settings, system: str, user: str, meta
     return LLMResult(text=text, tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost, from_cache=False)
 
 
-def _call_live_openai_compatible(settings: config.Settings, system: str, user: str, meta: dict[str, Any]) -> LLMResult:
+def _call_live_openai_compatible(settings: config.Settings, system: str, user: str, meta: dict[str, Any], label: str = "?") -> LLMResult:
     """Groq (and anything else that speaks the OpenAI chat-completions shape)
     over the same dependency-free urllib path as the Anthropic adapter -
     still no new pinned dependency, just a second, equally minimal HTTP call."""
@@ -162,7 +180,7 @@ def _call_live_openai_compatible(settings: config.Settings, system: str, user: s
         },
         method="POST",
     )
-    data = _urlopen_with_retry(req)
+    data = _urlopen_with_retry(req, label)
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage", {})
     tokens_in = usage.get("prompt_tokens", 0)
@@ -171,28 +189,100 @@ def _call_live_openai_compatible(settings: config.Settings, system: str, user: s
     return LLMResult(text=text, tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost, from_cache=False)
 
 
-def _urlopen_with_retry(req: urllib.request.Request, max_attempts: int = 5) -> dict[str, Any]:
-    """Groq's free tier rate-limits by requests/minute; a 17-scenario baseline
-    run comfortably exceeds that in a tight loop. Retry on 429 with backoff
-    (honouring Retry-After when the server sends one) rather than failing the
-    whole run partway through."""
-    import time
+def _do_single_attempt(req: urllib.request.Request, result_q: "queue.Queue[tuple[str, Any]]") -> None:
+    """Runs in its own daemon thread so the waiter in _urlopen_with_retry can
+    give up on a wall-clock deadline even though nothing in urllib can be
+    cancelled once it's blocked in a syscall. Relays success AND failure
+    through the queue rather than letting an exception surface only in this
+    thread - the caller is the one that decides what a failure means."""
+    try:
+        with urllib.request.urlopen(req, timeout=_SOCKET_TIMEOUT_SECONDS) as resp:
+            result_q.put(("ok", json.loads(resp.read().decode("utf-8"))))
+    except Exception as exc:  # noqa: BLE001 - cross-thread relay, not a fallback; the
+        # real handling happens where this lands in _urlopen_with_retry below.
+        result_q.put(("error", exc))
 
-    for attempt in range(max_attempts):
+
+def _urlopen_with_retry(req: urllib.request.Request, label: str) -> dict[str, Any]:
+    """Groq's free tier rate-limits by requests/minute; a 17-scenario batch
+    comfortably exceeds that in a tight loop, so 429s are retried with
+    backoff (honouring Retry-After when the server sends one).
+
+    Every attempt runs in a daemon thread and is awaited with
+    queue.Queue.get(timeout=...) against a hard _MAX_TOTAL_SECONDS wall-clock
+    budget shared across all attempts - not just urlopen's own
+    _SOCKET_TIMEOUT_SECONDS, which only bounds a single blocking recv() and
+    does nothing for a connection that keeps trickling bytes in just under
+    that ceiling forever (see the module-level comment; this is exactly the
+    failure mode that produced a 19-minute hang with no exception raised).
+    The thread is a daemon specifically so abandoning a truly stuck one on
+    deadline doesn't also block process exit - Python cannot cancel a thread
+    blocked in a C-level recv(), so "stop waiting on it" is the only lever
+    available, and daemon=True is what makes that safe to do.
+
+    Raises (never silently degrades) once _MAX_ATTEMPTS or
+    _MAX_TOTAL_SECONDS is exhausted, whichever comes first."""
+    start = time.monotonic()
+    deadline = start + _MAX_TOTAL_SECONDS
+    last_exc: BaseException | None = None
+
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+
+        print(f"[llm] {label} attempt {attempt}/{_MAX_ATTEMPTS} starting, "
+              f"elapsed={time.monotonic() - start:.0f}s budget_left={remaining:.0f}s", file=sys.stderr)
+
+        result_q: queue.Queue = queue.Queue(maxsize=1)
+        threading.Thread(target=_do_single_attempt, args=(req, result_q), daemon=True).start()
         try:
-            # A reasoning model generating against a large real payload (the
-            # full findings object, ~10KB+) can take well over 60s - 60s was
-            # tuned against small test prompts, not the actual production
-            # payload size. 150s gives real generations room without making
-            # a genuinely stuck request hang forever.
-            with urllib.request.urlopen(req, timeout=150) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code != 429 or attempt == max_attempts - 1:
-                raise
-            wait = float(e.headers.get("Retry-After", 0)) or (2**attempt) * 2
-            time.sleep(wait)
-    raise RuntimeError("unreachable")
+            status, payload = result_q.get(timeout=remaining)
+        except queue.Empty:
+            elapsed = time.monotonic() - start
+            print(f"[llm] {label} attempt {attempt} did not finish within the "
+                  f"{_MAX_TOTAL_SECONDS}s total budget (elapsed={elapsed:.0f}s) - giving up on "
+                  "it; the thread is a daemon and won't block process exit.", file=sys.stderr)
+            last_exc = TimeoutError(
+                f"{label}: attempt {attempt} exceeded the {_MAX_TOTAL_SECONDS}s total wall-clock "
+                f"budget without completing (socket timeout is {_SOCKET_TIMEOUT_SECONDS}s per "
+                "operation, so this is bytes trickling in under that ceiling, not a dead socket)"
+            )
+            break  # this attempt consumed the whole remaining budget by definition; no point looping
+
+        if status == "ok":
+            print(f"[llm] {label} attempt {attempt} succeeded, elapsed={time.monotonic() - start:.0f}s",
+                  file=sys.stderr)
+            return payload
+
+        exc = payload
+        last_exc = exc
+        retryable = (isinstance(exc, urllib.error.HTTPError) and exc.code == 429) or isinstance(
+            exc, (urllib.error.URLError, OSError)
+        )
+        if not retryable:
+            # A real HTTP error that isn't rate-limiting, a JSON decode error, an
+            # unexpected response shape - retrying won't fix any of those. Raise
+            # loudly now rather than burn the rest of the budget pretending it might.
+            raise exc
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or attempt == _MAX_ATTEMPTS:
+            break
+        if isinstance(exc, urllib.error.HTTPError):
+            wait = float(exc.headers.get("Retry-After", 0)) or (2**attempt)
+        else:
+            wait = 2**attempt
+        wait = min(wait + random.uniform(0, 1), remaining)
+        print(f"[llm] {label} attempt {attempt} failed ({type(exc).__name__}: {exc}), "
+              f"retrying in {wait:.0f}s", file=sys.stderr)
+        time.sleep(wait)
+
+    elapsed = time.monotonic() - start
+    raise TimeoutError(
+        f"{label}: exhausted after {elapsed:.0f}s against a {_MAX_TOTAL_SECONDS}s total wall-clock "
+        f"budget ({_MAX_ATTEMPTS} attempts max) - last error: {type(last_exc).__name__}: {last_exc}"
+    ) from last_exc
 
 
 _LIVE_ADAPTERS = {
@@ -201,7 +291,7 @@ _LIVE_ADAPTERS = {
 }
 
 
-def _call_live(settings: config.Settings, system: str, user: str, meta: dict[str, Any]) -> LLMResult:
+def _call_live(settings: config.Settings, system: str, user: str, meta: dict[str, Any], label: str = "?") -> LLMResult:
     """Minimal, dependency-free HTTP calls. requirements.txt intentionally
     pins no provider SDK (replay mode - the default - needs none), so every
     adapter here speaks its provider's REST API directly over urllib rather
@@ -212,7 +302,16 @@ def _call_live(settings: config.Settings, system: str, user: str, meta: dict[str
             f"live calls implemented for providers {sorted(_LIVE_ADAPTERS)}; "
             f"got '{settings.llm_provider}'. Add an adapter or run in replay mode."
         )
-    return adapter(settings, system, user, meta)
+    result = adapter(settings, system, user, meta, label)
+    # Serial by construction (no caller here is threaded or async - Rule 9), so
+    # this simply spaces consecutive live calls apart: eval/baselines/run_all.py
+    # calls this directly for B3, bypassing complete() entirely, so the delay
+    # lives here rather than in complete() - the one point every live call
+    # actually shares. A 17-scenario harness run plus a B3 baseline run back to
+    # back is ~30+ calls in a tight loop against Groq's free-tier rate limit;
+    # this is the first line of defence, the 429 backoff above is the second.
+    time.sleep(_INTER_CALL_DELAY_SECONDS)
+    return result
 
 
 def complete(
@@ -251,7 +350,8 @@ def complete(
     use_live = (not settings.replay_mode) and bool(settings.llm_api_key)
 
     if use_live:
-        result = _call_live(settings, system, user, meta)
+        label = f"{(ctx or {}).get('scenario_id') or (ctx or {}).get('run_id', '-')}/{prompt_id}"
+        result = _call_live(settings, system, user, meta, label)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(
             json.dumps(

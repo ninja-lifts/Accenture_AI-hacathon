@@ -131,6 +131,7 @@ def run(
     today: dt.date | None = None,
     investigate: bool = False,
     trace: bool = False,
+    scenario_id: str | None = None,
 ) -> dict[str, Any] | tuple[dict[str, Any], list[dict[str, Any]]]:
     """Execute the pipeline. Returns either a findings object (schema-valid)
     or, for an alert_sweep that does not escalate, a small alert-feed row
@@ -142,7 +143,13 @@ def run(
     {"stage": str, "ctx": {...}} snapshots, one per stage that actually ran,
     for `python -m eval.trace`. Every existing caller passes trace=False (the
     default) and gets the exact same single-value return as before - this is
-    additive, not a behaviour change."""
+    additive, not a behaviour change.
+
+    scenario_id is optional and purely cosmetic: engine/llm_client.py uses it
+    (falling back to the generated run_id) to label live-call progress lines,
+    so a batch run's stderr says which scenario a hung or slow call belongs
+    to instead of just a stage name. Never read by scoring or schema
+    validation - additive, like trace."""
     settings = config.load()
     env = _setup(settings)
     today = today or dt.date.today()
@@ -154,6 +161,7 @@ def run(
         "catalogue": env["catalogue"],
         "graph": env["graph"],
         "run_id": str(ulid.new()),
+        "scenario_id": scenario_id,
         "created_at": dt.datetime.now(dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z",
         "trigger": trigger,
         "raw_question": question,

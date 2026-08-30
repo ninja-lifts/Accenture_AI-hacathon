@@ -79,7 +79,7 @@ def run_scenario_in_app(scenario_id: str, persona_override: str | None) -> dict:
             "focal_start": start.isoformat(), "focal_end": end.isoformat(),
             "comparison_start": cmp_start.isoformat(), "comparison_end": cmp_end.isoformat(), "grain": "day",
         }
-    return pipeline.run(today=TODAY, **config)
+    return pipeline.run(today=TODAY, scenario_id=scenario_id, **config)
 
 
 def render_evidence(evidence: list[dict]) -> None:

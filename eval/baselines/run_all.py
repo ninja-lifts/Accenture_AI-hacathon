@@ -106,7 +106,9 @@ def run_b3(scenario: dict[str, Any], payload: dict[str, Any], settings) -> str:
     from engine.llm_client import _call_live
 
     user = json.dumps(payload, default=str, indent=2)
-    result = _call_live(settings, B3_SYSTEM_PROMPT, user, {"temperature": 0.2, "max_output_tokens": 1200})
+    result = _call_live(
+        settings, B3_SYSTEM_PROMPT, user, {"temperature": 0.2, "max_output_tokens": 1200}, f"{scenario['id']}/b3"
+    )
     return result.text.strip()
 
 

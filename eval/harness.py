@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import queue
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,15 @@ from engine import pipeline
 from eval import metrics
 
 TODAY = dt.date(2026, 8, 22)
+
+# 2 live calls (SC-17's intent-parse + narrate; every other scenario makes at
+# most 1) x engine/llm_client.py's own 300s per-call wall-clock budget, plus
+# margin for its 429 backoff sleeps and the (negligible per ADR-0006) stats
+# compute. This is a second, independent line of defence: even if something
+# outside llm_client.py's own bound got stuck, one scenario cannot stall the
+# rest of a batch run - it becomes a scorecard ERROR row instead, same as any
+# other scenario that raises.
+SCENARIO_TIMEOUT_SECONDS = 700
 
 # How a real user/alert naturally encounters each scenario - persona, kpi and
 # (where relevant) a pre-scoped segment. This is a run-time QUERY CONTEXT
@@ -69,7 +80,33 @@ def run_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
     config = dict(SCENARIO_RUN_CONFIG[sid])
     if config.get("trigger") != "user_question":
         config["window"] = _window_for(scenario)
-    return pipeline.run(today=TODAY, **config)
+    return pipeline.run(today=TODAY, scenario_id=sid, **config)
+
+
+def _run_with_deadline(fn, *args, timeout_seconds: float, **kwargs):
+    """Runs fn in a daemon thread and gives up waiting on it after
+    timeout_seconds - Python cannot cancel a thread once it's blocked in a
+    syscall, so daemon=True (not a joined/non-daemon thread) is what makes
+    abandoning a stuck one safe: it won't block process exit either.
+    Deliberately outside engine/llm_client.py's own per-call budget - this
+    wraps the WHOLE scenario (every stage, not just the LLM ones), so a stall
+    anywhere still can't stall the batch."""
+    result_q: queue.Queue = queue.Queue(maxsize=1)
+
+    def _target():
+        try:
+            result_q.put(("ok", fn(*args, **kwargs)))
+        except Exception as exc:  # noqa: BLE001 - cross-thread relay, not a fallback
+            result_q.put(("error", exc))
+
+    threading.Thread(target=_target, daemon=True).start()
+    try:
+        status, payload = result_q.get(timeout=timeout_seconds)
+    except queue.Empty:
+        raise TimeoutError(f"scenario did not complete within {timeout_seconds}s") from None
+    if status == "error":
+        raise payload
+    return payload
 
 
 def _actual_branch(findings: dict[str, Any]) -> str:
@@ -354,7 +391,7 @@ def main() -> None:
         if scenario.get("notes", "").strip().upper().startswith("RETIRED"):
             continue
         try:
-            findings = run_scenario(scenario)
+            findings = _run_with_deadline(run_scenario, scenario, timeout_seconds=SCENARIO_TIMEOUT_SECONDS)
             row = score_scenario(scenario, findings)
             if findings.get("kind") != "no_alert":
                 telemetries.append(findings["telemetry"] | {"replay_mode": findings["provenance"]["replay_mode"]})
