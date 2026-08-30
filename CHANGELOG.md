@@ -1176,6 +1176,62 @@ software does not work that way and every judge knows it.
   header commit hash - none of these three fixes touch scoring or the
   offline path, confirmed rather than assumed.
 
+## 029 — Judge-facing docs drifted from reality again, same class of gap entry 011 already fixed once
+**Date:** 2026-08-30 · **Phase:** 7 · **Commit:** `1bc3339`, `f22c4e7`
+
+- **Evidence:** Checking `CHECKLIST.md`'s open items against what this
+  session actually did (per the task at hand: "build it completely") found
+  a list of unticked-but-now-true and ticked-but-now-stale rows: the replay
+  cache row still said "not currently populated" after entries 019-028
+  populated it; the cost-receipt row still said "honestly $0.00, no live
+  key configured" after entry 025 recorded a genuine live run; the B3 row
+  still named Groq/`gpt-oss-120b` after entries 026-027 moved to
+  OpenAI/`gpt-4o-mini`. Grepping README/JUDGES/REPRODUCE/TRAJECTORIES/the
+  pitch script/the business proposal for the same patterns found the
+  identical drift spread across every judge-facing doc - the exact failure
+  mode entry 011 diagnosed and fixed once already ("nothing enforces that
+  judge-facing prose docs track the code/eval state they describe"),
+  recurring for the same structural reason: these files aren't part of the
+  CHANGELOG/CHECKLIST loop that stays current as a matter of process.
+  Separately, verifying `make reproduce` actually runs on this machine
+  found `make` itself is not installed (confirmed: `which make` empty, no
+  WSL) - a real gap in the literal promise `Makefile`'s own first line
+  makes ("if it breaks, the submission breaks") - though a compatible
+  `mingw32-make.exe` turned out to already be on `PATH` from an unrelated
+  MinGW install.
+- **Problem:** A judge who reads `eval/scorecard.md` and then `README.md`
+  would see two different pass counts (7/15 vs a stale 7/17) and two
+  different B3 providers. `JUDGES.md`'s and `TRAJECTORIES.md`'s biggest
+  single claims - "the default clone runs the template narrator, not the
+  live one" - described a real, honestly-disclosed gap that this session's
+  own work (entries 019-028) had already closed, making an honest
+  disclosure into a stale, now-inaccurate one if left alone.
+- **Decision:** Fix the specific stale passages, the same discipline entry
+  011 used - not a wholesale rewrite, and not silently correcting numbers
+  without saying what changed and why (`JUDGES.md`'s rewritten section
+  keeps the old gap's history rather than deleting it, since a judge who
+  remembers the earlier version deserves to see it was real and got fixed,
+  not memory-holed). `make baseline` gets the same `GLASSBOX_REPLAY=1`
+  force `make eval` already had (entry 018) - the same billing-surprise
+  risk, just not caught until auditing every judge-facing claim against
+  current reality surfaced it. `mingw32-make` is documented as a fallback,
+  not treated as a full fix - most judges on Windows won't have MinGW
+  installed either, so the manual per-target commands remain the primary
+  documented path.
+- **Change:** `Makefile` (`baseline` forces replay; new `baseline-live`
+  target). `CHECKLIST.md`, `JUDGES.md`, `README.md`, `REPRODUCE.md`,
+  `TRAJECTORIES.md`, `docs/07_DEMO_AND_PITCH.md`,
+  `docs/09_BUSINESS_PROPOSAL.md` - scorecard numbers, B3 provider/quotes,
+  provider-adapter count, replay-cache status, and the `--trace`-flag /
+  empty-cache claims that predated entries 012 and 019-028.
+- **Result:** `pytest` 14/14 (docs-only changes don't touch code paths, but
+  the Makefile fix does - reran to confirm regardless). Every number now
+  quoted in a judge-facing doc was re-verified against a currently
+  committed file before being written, not copied forward from an earlier
+  pass or reconstructed from memory - `eval/baseline_scorecard.md`'s exact
+  current SC-08 quote was re-read and pasted verbatim into README.md and
+  JUDGES.md, not paraphrased from the old Groq version.
+
 ---
 
 <!--
