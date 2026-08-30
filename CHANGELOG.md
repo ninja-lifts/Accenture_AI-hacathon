@@ -477,6 +477,54 @@ software does not work that way and every judge knows it.
   failure path changed behaviour, from a silent template render to a raised,
   loud error.
 
+## 015 — provenance had no entry at all for the document corpus, so a BM25-only degradation had nowhere honest to surface
+**Date:** 2026-08-30 · **Phase:** 5 · **Commit:** `681456c`
+
+- **Evidence:** `engine/stages/s05_retrieve.py` already degraded to BM25-only
+  retrieval when the embedding model couldn't load, and already printed a
+  loud stderr warning saying so - but `ctx["sources"]` (the list that becomes
+  `findings.provenance.sources`) is only ever populated by
+  `s01_define.py::run()`, once per contract source (`fact_orders`,
+  `dim_product`). Stage 05 never appended anything for the document index
+  itself, so there was no source entry to attach a quality flag to - the
+  stderr print was the *only* place this was recorded anywhere.
+- **Problem:** `findings.schema.json`'s `provenance.sources[].quality_flags`
+  was the right home for this (checked: a plain array of string, already
+  used by `s01_define.py` for `stale_source`), but using it required a
+  source entry to exist first. Without one, "this run degraded to
+  BM25-only" was invisible to the schema-valid findings object a judge or
+  the UI actually reads - visible only to whoever happened to be watching
+  stderr.
+- **Decision:** Append a `document_index` source entry to `ctx["sources"]`
+  every run (not only on degradation), carrying
+  `embeddings_unavailable_bm25_only` in `quality_flags` when the embedding
+  model didn't load. No schema change - the field already existed. Kept the
+  stderr print (checked before the UI even starts, e.g. a headless run).
+  Separately narrowed `_load_index`'s `except Exception` to
+  `except (ImportError, OSError)` - covers package-missing and no-network,
+  since connection/timeout/TLS/missing-local-cache errors all subclass
+  `OSError` in Python 3. Deliberately left uncaught: `RuntimeError` and
+  library-internal errors from a corrupted cache or version mismatch - those
+  aren't "no network," and telling them apart further would mean importing
+  `huggingface_hub`/`torch` exception types `requirements.txt` doesn't pin
+  (Rule 9). Letting those propagate is the honest choice given what's safely
+  knowable here without that dependency.
+- **Change:** `engine/stages/s05_retrieve.py::run()` (new source entry),
+  `_load_index` (narrowed except clause, docstring); `engine/pipeline.py`
+  (`_TRACE_KEYS["s05_retrieve"]` now includes `sources`, so `--trace` shows
+  it too); `app/main.py::render_findings` (new "Sources" list in the
+  Telemetry & security expander - `source_id`, `as_of`, `row_count`, any
+  `quality_flags` with a ⚠️ marker; nothing read `provenance.sources` at all
+  before this).
+- **Result:** `pytest` 8/8 (schema-validation test included - the new source
+  entry validates against the frozen schema unchanged). Verified with
+  Streamlit's `AppTest` harness: ran SC-01 through the real UI, no
+  exception, `document_index` rendered alongside `fact_orders`/`dim_product`
+  with 496 rows and (on this machine, where the embedding model loads fine)
+  an empty `quality_flags`. `eval/scorecard.md` unchanged except the header
+  commit hash; `eval/cost_receipt.md`'s latency line moved with normal
+  wall-clock noise (tokens/cost still 0/0 in replay mode, byte-identical).
+
 ---
 
 <!--
