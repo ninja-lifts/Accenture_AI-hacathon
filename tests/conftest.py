@@ -23,6 +23,14 @@ the bug this file exists to make impossible, twice over:
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+# tests/ has no __init__.py, so pytest's rootdir insertion (prepend mode)
+# puts tests/ itself on sys.path, not its parent - `engine` and `eval` live
+# one level up and are invisible to a bare `pytest` run from the repo root
+# without this. Must happen before the `from engine import ...` below.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 os.environ["GLASSBOX_REPLAY"] = "1"
 
