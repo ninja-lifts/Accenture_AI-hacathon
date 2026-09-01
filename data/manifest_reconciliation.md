@@ -7,7 +7,7 @@ changed. See "Why this is not a pre-registration violation" below.
 ## What this is
 
 `data/injection_manifest.yaml` is frozen ground truth, committed before any
-engine code existed (Rule 2, `CLAUDE.md`). Each scenario declares a
+engine code existed (Rule 2, `PROJECT_RULES.md`). Each scenario declares a
 `ground_truth.magnitude_pct` alongside `true_segment`, `true_cause_id`, etc.
 While investigating an internal contradiction in a live SC-01 narration
 (2026-08-30 session), the movement the engine actually measured for SC-01
@@ -124,7 +124,7 @@ Grepping `eval/metrics.py` and `eval/harness.py`:
 
 ## Why this is not a pre-registration violation
 
-Rule 2 (`CLAUDE.md`) exists to prevent tuning ground truth after seeing what
+Rule 2 (`PROJECT_RULES.md`) exists to prevent tuning ground truth after seeing what
 the engine says about it. Nothing here does that: `data/generate.py` is
 unchanged, every `magnitude_pct` value is unchanged, and the two fields nobody
 disputes are actually scored - `true_segment` and `expected_branch` - are

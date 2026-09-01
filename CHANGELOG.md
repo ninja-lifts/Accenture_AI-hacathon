@@ -56,7 +56,7 @@ software does not work that way and every judge knows it.
   a single line of engine code exists. Accept that some scenarios will turn out
   to be badly designed, and retire those in place rather than editing them.
 - **Change:** `data/injection_manifest.yaml` (17 scenarios) +
-  `schemas/injection_manifest.schema.json`. Rule 2 in `CLAUDE.md`.
+  `schemas/injection_manifest.schema.json`. Rule 2 in `PROJECT_RULES.md`.
 - **Result:** Commit `c908ef9bd569befc754c8b28d1db99b4ba590f52` precedes the
   first commit under `engine/`. Verifiable with
   `git log --follow data/injection_manifest.yaml`. Quoted in the README.
@@ -878,7 +878,7 @@ software does not work that way and every judge knows it.
   run had written and re-ran SC-01 live: `validator_retries=0`, a genuine
   live narration on the first attempt (entry 020's Result). Found and fixed
   entirely by re-running the real thing live, immediately after landing a
-  change meant to help - exactly the discipline `CLAUDE.md` asks this
+  change meant to help - exactly the discipline `PROJECT_RULES.md` asks this
   project to keep applying to itself, not just to the model's output.
 
 ## 022 — A third provider adapter, added under duress: Groq's account-level rate limit forced Gemini, which surfaced three more real quirks

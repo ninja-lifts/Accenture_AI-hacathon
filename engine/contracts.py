@@ -27,7 +27,7 @@ def load_all(path: str = "contracts") -> dict[str, dict[str, Any]]:
     schemas/contract.schema.json, return {contract_id: contract}.
 
     Fails loudly: a broken contract stops the app rather than shrinking the
-    catalogue silently (rule 1 in CLAUDE.md - schemas/ is frozen and a
+    catalogue silently (rule 1 in PROJECT_RULES.md - schemas/ is frozen and a
     contract that violates it is a bug in the contract, not a case to handle).
     """
     schema = json.loads(_schema_path().read_text(encoding="utf-8"))

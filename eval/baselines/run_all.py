@@ -9,7 +9,7 @@ GLASSBOX_LLM_API_KEY are configured - because the whole point of the
 comparison is showing what an actual model says when asked in one shot.
 Without a live key it is rendered as "NOT RUN", never a plausible-sounding
 invented transcript - that would be exactly the kind of fabricated baseline
-this project's own rules (and CLAUDE.md rule 6/7) exist to prevent, in the
+this project's own rules (and PROJECT_RULES.md rule 6/7) exist to prevent, in the
 one place fabrication would do the most damage: the SC-08 comparison.
 """
 

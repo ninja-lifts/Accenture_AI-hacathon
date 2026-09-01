@@ -68,7 +68,7 @@ def render_png(graph: nx.DiGraph, out_path: str) -> None:
     """One static render for the deck and the README.
 
     Hand-built SVG rather than matplotlib: requirements.txt does not pin a
-    plotting library (CLAUDE.md rule 9 - no new dependency without asking),
+    plotting library (PROJECT_RULES.md rule 9 - no new dependency without asking),
     and networkx's own layout (spring_layout) needs nothing beyond numpy,
     which is already pinned. `out_path` is honoured verbatim; callers should
     pass an `.svg` path - scalable and just as usable in a deck or README as

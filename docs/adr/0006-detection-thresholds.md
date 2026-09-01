@@ -24,7 +24,7 @@ mix into something implausible, not to leave the threshold alone.
 
 ## Decision
 Threshold values are calibrated against the committed dataset, then frozen
-(rule 3, `CLAUDE.md`):
+(rule 3, `PROJECT_RULES.md`):
 - `min_z` stays the primary, scale-independent "is this surprising" gate.
 - `min_abs_impact` becomes a much smaller, scale-independent floor - "not
   worth an analyst's time below this regardless of statistical surprise" -

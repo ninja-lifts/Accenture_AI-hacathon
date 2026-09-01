@@ -35,7 +35,7 @@ yet run rather than described as if it were.
 ## 1. Clone and install
 
 ```bash
-git clone <this repo>
+git clone https://github.com/ninja-lifts/Accenture_AI-hacathon.git glassbox
 cd glassbox
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
@@ -99,7 +99,7 @@ you have a live key configured in `.env`. Runs all 17 scenarios (15 scored,
 2 retired - see below) through the real pipeline, scores against ground
 truth, and writes both `eval/scorecard.md` and `eval/cost_receipt.md`.
 
-**SC-07 and SC-15 are retired**, in place, per `CLAUDE.md`'s rule for an
+**SC-07 and SC-15 are retired**, in place, per `PROJECT_RULES.md`'s rule for an
 ill-posed scenario - both stay in the manifest with their `ground_truth`
 unedited; only their `notes` field says why. Full reasoning:
 `data/manifest_reconciliation.md`. They show as their own `RETIRED` row in

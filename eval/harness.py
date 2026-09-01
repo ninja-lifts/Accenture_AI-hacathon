@@ -287,7 +287,7 @@ def render_scorecard(rows: list[dict[str, Any]]) -> str:
     if retired_rows:
         lines.append("### Retired")
         lines.append(
-            "Left in place per CLAUDE.md's rule for an ill-posed scenario - ground_truth "
+            "Left in place per PROJECT_RULES.md's rule for an ill-posed scenario - ground_truth "
             "unchanged, notes explain why, full analysis in data/manifest_reconciliation.md."
         )
         for r in retired_rows:

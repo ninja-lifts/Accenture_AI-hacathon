@@ -4,13 +4,13 @@ Thank you for the time. Here is the shortest path to a fair assessment.
 
 **Status check first, because it matters for how you read this:** the engine,
 data generator, and evaluation harness are real, tested, and reproducible. A
-minimal UI exists (`app/main.py` — `make app`) and is verified to run every
-scenario without error, but no one has clicked through it in a browser yet,
-so we can't vouch for the visual polish, only the logic. There is no hosted
-page — everything below points at the repo itself (code, committed output,
-tests you can run) rather than a link, because that's what actually exists
-right now. We would rather you know that up front than discover it by
-clicking a dead link.
+minimal UI exists (`app/main.py` — `make app`), is verified to run every
+scenario without error, and has real rendered screenshots in
+[`screenshots/`](screenshots/) — not mockups. There is no hosted page —
+everything below points at the repo itself (code, committed output, tests
+you can run) rather than a link, because that's what actually exists right
+now. We would rather you know that up front than discover it by clicking a
+dead link.
 
 ---
 
@@ -33,6 +33,16 @@ clicking a dead link.
    python -m eval.harness --scenarios SC-08 --verbose
    ```
    No API key needed — the default `.env` runs fully offline.
+
+   **Want to watch it generate a genuinely fresh answer instead of replaying
+   a cached one?** Groq's free tier (`console.groq.com/keys`, about a
+   minute, no card) is enough for a full pass: in `.env` set
+   `GLASSBOX_REPLAY=0`, `GLASSBOX_LLM_PROVIDER=groq`,
+   `GLASSBOX_LLM_MODEL=openai/gpt-oss-120b` (what this repo's own live
+   captures used), and `GLASSBOX_LLM_API_KEY` to your key, then `make app`
+   and run any scenario — the badge changes from `🔁 REPLAYING` to `🟢 LIVE
+   model call`, and the narration you're reading was written seconds ago,
+   not committed to the repo.
 
 If you only do one of these, do **step 2**.
 
@@ -67,9 +77,13 @@ Add:
    ```bash
    pytest -q
    ```
-   8 tests, including one that validates every scenario's output against the
-   frozen `schemas/findings.schema.json`, and one proving tier assignment is
-   monotone (removing evidence can never raise a confidence tier).
+   14 tests. Four must never be weakened — `test_gate_invariant`,
+   `test_tiers_monotone`, `test_validator_blocks_invented_numbers`, and
+   `test_findings_schema_valid` (validates every scenario's output against
+   the frozen `schemas/findings.schema.json`; the tiers test proves
+   assignment is monotone — removing evidence can never raise a confidence
+   tier). The other ten are regression tests added while fixing real bugs
+   found during live runs — see `CHANGELOG.md` entries 020-028.
 8. Switch persona in a Python shell and diff the `entitlements_hash`:
    ```python
    from engine import pipeline
@@ -162,12 +176,16 @@ real ones, not itself a real one).
 
 We would rather name these than have you find them.
 
-- **The UI exists but hasn't been eyeballed by a human.** `app/main.py`
-  (`make app`) runs every one of the 17 scenarios and all three persona
-  overrides with zero exceptions under Streamlit's headless `AppTest`
-  harness — that's real functional verification, not a claim — but nobody
-  has opened it in an actual browser to check the layout looks right. Engine
-  and evidence came first on purpose; this is the ~20% we'd finish next.
+- **The UI has been visually verified, not yet by a blind third-party user.**
+  `app/main.py` (`make app`) runs every one of the 17 scenarios and all three
+  persona overrides with zero exceptions under Streamlit's headless `AppTest`
+  harness — that's real functional verification, not a claim. It has also now
+  been opened in an actual browser: [`screenshots/`](screenshots/) has 11 real
+  renders across the home screen, the SC-01 headline/evidence/rejected-cause
+  views, SC-08's abstention, and SC-14's flagged prompt-injection document —
+  not mockups. What's still open: nobody who didn't build this has completed
+  the tour unaided. Engine and evidence came first on purpose; this is the
+  ~20% we'd finish next.
 - **Both baselines have been run live, not simulated.**
   [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md) is real: B1
   (naive drill-down) asserts a cause on **3 of 3** scenarios where none was

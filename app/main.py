@@ -25,7 +25,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from engine import pipeline  # noqa: E402
+from engine import config, pipeline  # noqa: E402
 from eval.harness import SCENARIO_RUN_CONFIG  # noqa: E402
 
 TODAY = dt.date(2026, 8, 22)
@@ -47,6 +47,21 @@ TIER_GLOSS = {
 def load_manifest() -> list[dict]:
     manifest = yaml.safe_load(Path("data/injection_manifest.yaml").read_text(encoding="utf-8"))
     return manifest["scenarios"]
+
+
+def clear_replay_cache(cache_dir: Path) -> int:
+    """Delete cached LLM responses only. Scoped to cache_dir's own
+    narrate/intent_parse subfolders - structurally cannot reach data/,
+    which lives under a separate directory this function never opens."""
+    removed = 0
+    for sub in ("narrate", "intent_parse"):
+        subdir = cache_dir / sub
+        if not subdir.is_dir():
+            continue
+        for f in subdir.glob("*.json"):
+            f.unlink()
+            removed += 1
+    return removed
 
 
 def tier_badge(tier: str) -> str:
@@ -207,6 +222,25 @@ def main() -> None:
         persona_override = None if persona == "(scenario default)" else persona
 
         run = st.button("Run", type="primary")
+
+        st.divider()
+        st.header("Cache")
+        settings = config.load()
+        live_ready = (not settings.replay_mode) and bool(settings.llm_api_key)
+        if live_ready:
+            st.caption(f"Live key configured ({settings.llm_provider}). Safe to clear.")
+            confirm_clear = st.checkbox("I understand this deletes cached responses")
+            if st.button("🗑️ Clear cache", disabled=not confirm_clear):
+                removed = clear_replay_cache(Path(settings.replay_cache))
+                st.success(f"Cleared {removed} cached response(s) — the next Run calls the live model fresh.")
+        else:
+            st.button("🗑️ Clear cache", disabled=True)
+            st.caption(
+                "Disabled: no live key configured (`GLASSBOX_REPLAY=0` + "
+                "`GLASSBOX_LLM_API_KEY`). Clearing without one would leave "
+                "scenarios with nothing to replay and no way to regenerate. "
+                "Only ever clears `eval/replay_cache/` — never the dataset."
+            )
 
     if not run:
         st.info("Pick a scenario in the sidebar and click **Run**. Offline by default — no API key needed; responses come from the committed replay cache, and the app says so above the result.")

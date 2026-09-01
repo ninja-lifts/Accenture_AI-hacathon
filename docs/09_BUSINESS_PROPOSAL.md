@@ -1,28 +1,35 @@
 # Business Proposal
 
-**Status note, read this first:** the sections below that depend on real
-customer conversations (market sizing, willingness to pay, competitive
-positioning against named incumbents) are marked explicitly where they are
-informed judgement rather than research. We would rather flag an assumption
-than dress an estimate up as a finding — the same standard the rest of this
-repo holds itself to (see `eval/scorecard.md`, `CHANGELOG.md`). Every
-technical claim below is pulled from a committed file, not asserted.
+**In one sentence:** GlassBox turns a three-to-four-day manual investigation
+into a cited, confidence-graded answer in under 30 seconds — and, measured
+rather than claimed, it is the version of this category of tool that says
+*"I don't know"* instead of inventing a cause when the data doesn't support
+one.
+
+**Every technical claim in this document is pulled from a committed file,
+not asserted** — the same discipline `eval/scorecard.md` and `CHANGELOG.md`
+hold the engine to. Where a section instead depends on something no
+prototype can prove — market size, willingness to pay, positioning against a
+named incumbent — we say so plainly rather than dressing an estimate up as a
+finding. That distinction is marked explicitly throughout, starting in §2.
 
 ---
 
 ## 1. The user
 
-**Primary: the category/functional manager who owns a KPI on a monthly
-business review** — in the prototype, "Priya," Audio category lead at a
-mid-size electronics retailer (`README.md`). She does not write SQL, does not
-have an analytics degree, and is accountable for a number that moves before
-she knows why.
+**Primary: the category or functional manager staring at a number she can't
+explain.** In the prototype that's "Priya," Audio category lead at a
+mid-size electronics retailer (`README.md`) — no SQL, no analytics degree,
+and accountable for a KPI that moved before she knew why.
 
 **Secondary: the analyst who currently does the investigation by hand.**
 GlassBox does not remove this role — it removes the three-to-four-day
 mechanical part (pull the numbers, slice by every dimension, read forty
 tickets) so the analyst's time goes to the last 20%: judgement calls the
-system correctly declines to make (SC-08, SC-12).
+system correctly declines to make — a real movement with no true cause
+(scenario `SC-08`) and a confounder that survives every control-segment test
+(scenario `SC-12`); see `docs/03_SCENARIOS.md` for the full 17-scenario set
+this repo's evaluation is built on.
 
 **Tertiary: Finance/Ops leadership**, who receive the action object and the
 audit trail, not the investigation.
@@ -36,7 +43,7 @@ this shapes the go-to-market motion in §4.
 
 ## 2. The problem, sized honestly
 
-**What we can state as fact, from the prototype itself:**
+**Measured, not estimated:**
 - The manual investigation this replaces (pull numbers → slice dimensions →
   ask other teams → read support tickets → produce a written answer) is a
   real, described workflow, not a hypothetical (`README.md`'s Priya scenario).
@@ -48,24 +55,23 @@ this shapes the go-to-market motion in §4.
   receipt for the real breakdown), at **$0 marginal cost in replay mode**
   and a small, bounded live-mode cost (2 LLM calls per run, hard-capped).
 
-**What we cannot state as fact, and are not going to invent:** how many
-investigations a month a "mid-size retailer" actually runs, what an analyst-
-day actually costs a specific customer, or what this is worth to them in
-rupees. Those numbers need a discovery call with 3-5 real prospective
-customers, not a benchmark run. **This is the single highest-value non-
-engineering task for the next phase of this project**, and it is a gap we are
-naming, not filling with a plausible-sounding placeholder — see
-`README.md`'s equivalent note on the same question.
+**What we refuse to invent — and the single highest-value thing left to do:**
+how many investigations a month a "mid-size retailer" actually runs, what an
+analyst-day actually costs a specific customer, or what this is worth to
+them in rupees. Those numbers need a discovery call with 3-5 real
+prospective customers, not a benchmark run — so rather than fill the gap
+with a plausible-sounding placeholder, we're naming it as the first thing a
+design partner buys us (§4, Phase 1) — see `README.md`'s equivalent note on
+the same question.
 
-**What we can argue directionally, and would defend in Q&A:** any
-organization running weekly/monthly KPI reviews across more than a handful of
-segments has this bottleneck, because the bottleneck is structural (the
-translation from "what changed" to "why" is inherently manual today, not a
-tooling gap any current dashboard closes) — see `docs/05_DATA_STRATEGY.md`
-§2 for the evidence that this is a genuine market gap, not just a
-positioning claim (no public dataset even pairs the four things — KPIs,
-customer text, anomaly labels, cause labels — needed to build or evaluate a
-system like this, which is itself evidence nobody has solved it cleanly yet).
+**Why this is structural, not seasonal:** any organization running
+weekly/monthly KPI reviews across more than a handful of segments has this
+bottleneck, because the translation from "what changed" to "why" is
+inherently manual today — not a tooling gap any current dashboard closes.
+`docs/05_DATA_STRATEGY.md` §2 makes the case in full: no public dataset even
+pairs the four things — KPIs, customer text, anomaly labels, cause labels —
+needed to build or evaluate a system like this, which is itself evidence
+nobody has solved it cleanly yet.
 
 ---
 
@@ -136,6 +142,14 @@ tenant to make this work — training on it would contradict the whole
 deployment story, per `docs/02_BUILD_BLUEPRINT.md`'s deliberate-non-features
 table).
 
+**Who buys it, and how:** the CDO or analytics platform owner, used day to
+day by category managers, regional heads and finance controllers — a layer
+on the BI stack the enterprise already owns, not a rip-and-replace, sold one
+design partner at a time (Phase 1) before any vertical or platform motion.
+We are not asserting a price here — that number needs the same discovery
+conversation named in §2 — but the buyer and the motion are not a gap the
+way the price is.
+
 ---
 
 ## 5. Risks and mitigations
@@ -143,12 +157,12 @@ table).
 | Risk | Real, or hypothetical? | Mitigation |
 |---|---|---|
 | **Contract authoring cost blocks adoption** | Real — five metrics is an afternoon each; 400 is a programme (`JUDGES.md`) | Phase 1 deliberately scopes to 5 metrics with a design partner, not a big-bang rollout. Most enterprises already have half a contract in an existing dbt/semantic layer to draw from. |
-| **Synthetic-primary-dataset objection undermines evaluation credibility** | Real, and named rather than hidden | RS external benchmark (135 real anomalies, 7 published algorithms) exists as a planned mitigation but has not been run yet in this build — tracked openly in `CHECKLIST.md`, not glossed over. |
-| **A confounder survives every control-segment test and produces an overconfident answer** | Real — this is SC-12's designed failure mode | The system's actual behavior on this exact case, measured: it abstains rather than force an answer (`eval/scorecard.md`'s SC-12 row). The tier ladder and falsification stage exist specifically so this degrades honestly instead of silently. |
+| **Synthetic-primary-dataset objection undermines evaluation credibility** | Real, and named rather than hidden | We had to build this: no public dataset pairs KPIs, customer text and cause labels (§2 above; full argument in `docs/05_DATA_STRATEGY.md` §2). So the ground truth in `data/injection_manifest.yaml` was frozen before the engine existed — provable with `git log --follow data/injection_manifest.yaml` — and the generator (`data/generate.py`) is built to make it hard rather than convenient: ramped changes instead of clean steps, partial spillover into the "control" segments, a deliberately confounded rival cause (SC-01's national promo). RS external benchmark (135 real anomalies, 7 published algorithms) adds real-data coverage on top of this — planned, tracked openly in `CHECKLIST.md`, not yet run. |
+| **A confounder survives every control-segment test and produces an overconfident answer** | Real — this is test scenario SC-12's designed failure mode | The system's actual behavior on this exact case, measured: it abstains rather than force an answer (`eval/scorecard.md`'s SC-12 row). The tier ladder and falsification stage exist specifically so this degrades honestly instead of silently. |
 | **LLM provider dependency / vendor lock-in** | Partially mitigated by design, not yet proven | `engine/llm_client.py` is the single boundary; provider is config, not code. This session added a second working adapter (Groq, alongside the original Anthropic one) without touching any other file — real evidence the vendor-neutral design works, not just an architecture diagram claiming it does. |
 | **A live-mode cost surprise at scale** | Low, and measured | Two LLM calls per run, hard-capped in the schema (`telemetry.llm_calls.maximum: 2`) and enforced in code (`LLMCallCapExceeded`). `eval/cost_receipt.md` reports real per-run token/cost telemetry every time the harness runs, not on request. |
 | **Market size / willingness to pay unvalidated** | Real, explicitly not hidden | Named in §2 above as the top open item. No number is asserted for it here. |
-| **"Just use one LLM prompt" competitive pressure** | Real — this is the most common objection this category of product faces | `eval/baseline_scorecard.md`'s B3 baseline is not hypothetical; it was run live against a real model this session. On SC-08 specifically it produced a fluent, 70-80%-confident, fabricated cause — quoted verbatim in that file, not paraphrased. |
+| **"Just use one LLM prompt" competitive pressure** | Real — this is the most common objection this category of product faces | `eval/baseline_scorecard.md`'s B3 baseline is not hypothetical; it was run live against a real model this session. On test scenario SC-08 specifically it produced a fluent, 70-80%-confident, fabricated cause — quoted verbatim in that file, not paraphrased. |
 
 ---
 

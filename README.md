@@ -5,12 +5,13 @@ the evidence, and tells you how much to trust it — and says "I don't know" whe
 the data doesn't support an answer.**
 
 **A minimal 2-screen Streamlit app exists (`app/main.py` — scenario/persona
-picker, tiered findings view) and runs: `make app`. It's verified headlessly
-— every one of the 17 scenarios and all three persona overrides execute
-through the real UI with zero exceptions (Streamlit's `AppTest` harness) —
-but no human has clicked through it in a browser yet, so treat the visual
-polish as unverified even though the logic is. Everything else below is
-verifiable directly in this repo either way: real code, a real committed
+picker, tiered findings view) and runs: `make app`. It's verified two ways —
+headlessly (every one of the 17 scenarios and all three persona overrides
+execute through the real UI with zero exceptions, Streamlit's `AppTest`
+harness) and visually (real screenshots of the rendered UI at every stage of
+a run — home screen, evidence drawer, abstention, a flagged prompt-injection
+document — in [`screenshots/`](screenshots/), not mockups). Everything else
+below is verifiable directly in this repo too: real code, a real committed
 dataset, and a scorecard you can regenerate yourself with no API key.**
 [5-minute evaluation guide](JUDGES.md) · [Reproduce our results](REPRODUCE.md) · [Run traces](TRAJECTORIES.md) · [Improvement changelog](CHANGELOG.md)
 
@@ -47,13 +48,23 @@ everywhere and South's drop was larger than that alone explains.
 [See the full seven-stage trace.](TRAJECTORIES.md#1-sc-01--the-hero-all-seven-stages)
 
 And when the data genuinely doesn't contain an answer, it says so — which is
-the part that took the longest to build. [See SC-08.](TRAJECTORIES.md#2-sc-08--the-abstention-path)
+the part that took the longest to build. [See SC-08](TRAJECTORIES.md#2-sc-08--the-abstention-path)
+— one of our 17 pre-registered test scenarios (`SC-01`…`SC-17`, each a
+distinct planted-cause or no-cause case defined in
+`data/injection_manifest.yaml` and described in full in
+`docs/03_SCENARIOS.md`); this one is designed with no real cause planted at
+all.
 
-*(No screenshot yet — the UI exists and is verified to run, but no one has
-opened it in a browser to capture one. The trace above is the real output, in
-the format the engine actually produces it — `make app` renders the same
-findings object through `app/main.py::render_findings` if you want to see it
-live.)*
+*(See [`screenshots/`](screenshots/) for the real rendered UI on this exact
+scenario — headline and tier badges, the evidence drawer open on the cited
+ticket, the rejected rival cause. The trace above is the same findings
+object in the format the engine actually produces it; `make app` renders it
+live if you want to run it yourself.)*
+
+**Priya is the user. The buyer is one level up:** the CDO or analytics
+platform owner, sold one design partner at a time — a layer on the BI stack
+the enterprise already owns, not a rip-and-replace. Full case, including
+what we're not willing to guess a price on: [`docs/09_BUSINESS_PROPOSAL.md`](docs/09_BUSINESS_PROPOSAL.md).
 
 ---
 
@@ -100,6 +111,10 @@ never raise one — that property is unit-tested.
 
 ## Does it work?
 
+**Zero hallucinated causes across 15 scored scenarios. Zero.** Not "low" —
+zero, measured, with the misses published alongside the passes. Here's the
+full picture, and exactly how to reproduce every number in it yourself.
+
 Quoted from the committed [`eval/scorecard.md`](eval/scorecard.md) — regenerate
 it yourself with `GLASSBOX_REPLAY=1 python -m eval.harness --scenarios all --out eval/scorecard.md`,
 no API key needed, and it will reproduce these numbers exactly. This isn't a
@@ -108,7 +123,8 @@ theoretical claim: the committed scorecard was produced by a real live run
 diffs byte-for-byte identical against it, aside from the header commit hash.
 
 **17 pre-registered scenarios**, 15 scored, on data where we planted the
-causes, so we know the right answers. Two (SC-07, SC-15) are retired in
+causes, so we know the right answers. Two (SC-07: two co-equal causes;
+SC-15: localizes to a below-disclosure-threshold cell) are retired in
 place, per our own pre-registration rule for an ill-posed scenario — full
 reasoning in `data/manifest_reconciliation.md`; both remain visible in the
 manifest and the scorecard's own `RETIRED` section, not hidden:
@@ -145,6 +161,17 @@ truth. `eval/scorecard.md`'s Misses section has the specific reason for each.
 **On real data:** the RS benchmark (135 real anomalies against seven
 published localization algorithms) is planned but has not been run —
 `eval/rs_benchmark.md` says so honestly rather than showing invented numbers.
+
+**The primary dataset (Meridian) is synthetic — because the real one doesn't
+exist.** No public dataset pairs business KPIs, customer text, and labelled
+root causes — we had to build the evaluation because the field never had one
+(`docs/05_DATA_STRATEGY.md` §2 makes the full case). The generator
+(`data/generate.py`) is built to make this hard, not convenient: ramped
+changes instead of clean steps, partial spillover into the "control"
+segments so they aren't pristine, a deliberately confounded rival cause
+(SC-01's national promo, timed to end the same week). Real-data benchmarks
+(RS, PSqueeze) sit alongside it — see `docs/05_DATA_STRATEGY.md` for what's
+used, why, and under which licences.
 
 **The ground truth was frozen before the engine existed.** Commit
 `c908ef9bd569befc754c8b28d1db99b4ba590f52` is the repo's first commit and
@@ -197,20 +224,25 @@ subscription. Five of seven stages never touch a model; the model sees a
 minimised, redacted findings object and snippets of documents the asking user was
 already entitled to read.
 
-Demonstrated in the prototype, not just claimed — no UI picker yet, so these
-are traced directly rather than clicked:
+Demonstrated in the prototype, not just claimed:
 
 - **Prompt injection** — a malicious support ticket is retrieved, quoted as
   evidence, flagged, and ignored. Found doing this in two different scenarios,
-  one of them unplanned. *([SC-14 trace](TRAJECTORIES.md#3-sc-14--a-hostile-document))*
+  one of them unplanned. Visible in the actual UI, not just traced — the
+  flagged expander and the narrative ignoring it are both in
+  [`screenshots/`](screenshots/) (`09_sc14_flagged_injection_expander.png`,
+  `10_sc14_narrative_ignored_attack.png`).
+  *([SC-14 trace](TRAJECTORIES.md#3-sc-14--a-hostile-document))*
 - **Small-cell suppression** — a movement localizing below the minimum cell
   size is rolled up to a disclosable level so no individual is inferable
-  *(SC-15; `engine/entitlements.py::suppress_small_cells`)*
-- **Role-based access** — different personas produce a different SQL predicate
-  and a different `entitlements_hash` for the same question — shown directly,
-  no UI needed, in [`JUDGES.md`'s 15-minute path](JUDGES.md)
+  *(SC-15; `engine/entitlements.py::suppress_small_cells`)* — traced, not yet
+  clicked through the UI picker
+- **Role-based access** — the sidebar's persona switcher re-runs the pipeline
+  with a different SQL predicate and a different `entitlements_hash` for the
+  same question — clickable in the UI (`screenshots/11_telemetry_entitlements_hash.png`)
+  and shown directly, no UI needed either, in [`JUDGES.md`'s 15-minute path](JUDGES.md)
 - **Audit log** — every run: who asked, what was computed, what was withheld
-  (`engine/audit.py`, append-only JSONL)
+  (`engine/audit.py`, append-only JSONL) — traced, not yet surfaced in the UI
 
 Details in [`docs/06_SECURITY_TRUST.md`](docs/06_SECURITY_TRUST.md).
 
@@ -219,7 +251,7 @@ Details in [`docs/06_SECURITY_TRUST.md`](docs/06_SECURITY_TRUST.md).
 ## Run it
 
 ```bash
-git clone <this repo> && cd glassbox
+git clone https://github.com/ninja-lifts/Accenture_AI-hacathon.git glassbox && cd glassbox
 make reproduce        # setup → generate data → run 15 scored scenarios → tests
 ```
 
@@ -247,6 +279,27 @@ scenario with no cached entry at all falls back to the deterministic parser
 output looks like. Every findings object validates against the schema and
 passes the number validator either way. Full guide, expected outputs and
 troubleshooting: [REPRODUCE.md](REPRODUCE.md).
+
+**Want to host it instead of running it locally?** The app is a single
+Streamlit file (`app/main.py`) with no external services to stand up. On
+[Streamlit Community Cloud](https://streamlit.io/cloud) (free): fork or point
+at this repo, set the main file to `app/main.py`, and add one secret —
+`GLASSBOX_REPLAY=1` — under the app's Secrets settings. That's the whole
+config; no API key needed, no database to provision, no build step beyond
+`requirements.txt`. The same four `.env` variables from the section below
+(`GLASSBOX_REPLAY`, `GLASSBOX_LLM_PROVIDER`, `GLASSBOX_LLM_MODEL`,
+`GLASSBOX_LLM_API_KEY`) work identically as platform secrets on any other
+Python host (Render, Railway, a bare VM) — set them, then run
+`streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0`.
+
+**Want genuinely live output, not replay?** Groq's free tier
+(`console.groq.com/keys` — about a minute to sign up, no card needed) is
+enough for a full run: in `.env` set `GLASSBOX_REPLAY=0`,
+`GLASSBOX_LLM_PROVIDER=groq`, `GLASSBOX_LLM_MODEL=openai/gpt-oss-120b`
+(the model this repo's own live captures used — see `CHANGELOG.md`), and
+`GLASSBOX_LLM_API_KEY` to your key, then `make app` and run any scenario.
+The UI's badge switches from `🔁 REPLAYING` to `🟢 LIVE model call`, and
+what you're reading was generated on the spot.
 
 **Four provider adapters exist in `engine/llm_client.py`: Anthropic, Groq,
 Gemini, and OpenAI.** All four are wired the same way — swap
@@ -313,8 +366,3 @@ datasets used under their own licences where applicable: RiskLoc (MIT),
 PSqueeze (CC BY 4.0) — see [`data/README.md`](data/README.md). No Olist or
 other CC BY-NC-SA data is committed to this repo, by design
 (see `docs/05_DATA_STRATEGY.md` §3).
-
-*If the competition rules require an AI-assistance disclosure, that line
-belongs here — we haven't added one because we don't know this competition's
-specific rules and it isn't ours to word unilaterally. Flagging it rather
-than skipping it silently.*

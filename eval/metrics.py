@@ -25,8 +25,6 @@ Trust behaviour - the metrics that make this a trust product:
 
 Cost / latency:
     p50_latency_ms, p95_latency_ms, usd_per_run
-
-TODO(Phase 6).
 """
 
 from __future__ import annotations

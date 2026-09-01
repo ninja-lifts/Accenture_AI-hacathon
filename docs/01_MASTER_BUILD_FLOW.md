@@ -1,30 +1,9 @@
 # Master Build Flow — one sequence, top to bottom
 
-**This file is the plan.** `CLAUDE.md` points here; every session starts by
-reading the current phase. Eight phases, each ending in a **gate** with an
-explicit pass condition. Do not enter a phase before the previous gate is green.
-
----
-
-## Set your anchor before you do anything else
-
-Everything below is **T-minus**. Fill this in once, here, and commit it:
-
-```
-T−0  (submission deadline)  =  ____________   ← set this
-T−0  time of day / timezone =  ____________
-Submission mechanics        =  repo link + demo video + deck  (confirm page limits,
-                               video length, whether the pitch is live)
-```
-
-**Default assumption used throughout: a 21-day build.** If your real window is
-shorter, do not compress everything proportionally — apply the compression ladder
-in §9 *at the start*, decide what you are not building, and write it down. A
-scope decision made on day one is a plan; the same decision made at T−2 is a
-disaster.
-
-**Owners:** `[Y]` Yuvraj — engine, data, evaluation. `[N]` Nikhil — retrieval,
-UI, business proposal. `[B]` both.
+The build plan this project was executed against: eight phases, each ending in
+a **gate** with an explicit pass condition, referenced elsewhere in this repo
+(`REPRODUCE.md`, `eval/trace.py`, the ADRs) as the record of when and why each
+design decision was made. Times below are relative (T-minus to submission).
 
 ---
 
@@ -34,7 +13,7 @@ UI, business proposal. `[B]` both.
 The shortest phase and the one with the most permanent consequences.
 
 - [ ] `[B]` Create the repo (private for now), clone locally
-- [ ] `[B]` Drop in this starter kit: `CLAUDE.md`, `docs/`, `schemas/`,
+- [ ] `[B]` Drop in this starter kit: `PROJECT_RULES.md`, `docs/`, `schemas/`,
       `contracts/`, `prompts/`, `engine/`, `eval/`, `app/`, `tests/`,
       `Makefile`, `requirements.txt`, `.gitignore`, `.env.example`, `LICENSE`
 - [ ] `[Y]` `python -m venv .venv` → activate → `make setup`

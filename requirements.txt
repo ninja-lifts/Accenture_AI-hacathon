@@ -1,5 +1,5 @@
 # Pinned at Phase 0. Adding a dependency is a decision, not a reflex -
-# see CLAUDE.md rule 9. Every line here is one more thing that can break on a
+# see PROJECT_RULES.md rule 9. Every line here is one more thing that can break on a
 # judge's laptop at 11pm.
 
 duckdb==1.1.3

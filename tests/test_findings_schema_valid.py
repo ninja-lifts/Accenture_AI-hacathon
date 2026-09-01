@@ -1,5 +1,5 @@
 """Every findings object the pipeline produces must validate against the
-frozen schemas/findings.schema.json - schemas/ is rule 1 in CLAUDE.md, and
+frozen schemas/findings.schema.json - schemas/ is rule 1 in PROJECT_RULES.md, and
 "the pipeline emits schema-valid findings" is Gate 4's other half (the first
 half, exactly-one-branch, is tests/test_gate_invariant.py).
 
