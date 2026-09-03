@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glassbox.local/schemas/feedback.schema.json",
+  "title": "GlassBox Feedback Record",
+  "description": "One line of runs/feedback.jsonl: an analyst or business-user verdict on one driver from one run, written by engine/feedback.py::record(). Append-only, like the audit log (schemas/findings.schema.json's sibling, runs/audit.jsonl) it is designed to sit next to. This schema is separate from and does not modify findings.schema.json, contract.schema.json or injection_manifest.schema.json - those three are frozen per PROJECT_RULES.md rule 1.",
+  "type": "object",
+  "required": ["feedback_id", "created_at", "run_id", "driver_id", "verdict", "note", "reviewer"],
+  "additionalProperties": false,
+  "properties": {
+    "feedback_id": {
+      "type": "string",
+      "description": "ULID. This append-only record's own key, independent of run_id."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "run_id": {
+      "type": "string",
+      "description": "The findings object / runs/audit.jsonl record this feedback is about."
+    },
+    "driver_id": {
+      "type": "string",
+      "description": "The specific driver within that run's outcome.answer.drivers[] being judged. Only meaningful together with run_id - the same driver_id string can name an unrelated driver under a different run's KPI."
+    },
+    "verdict": {
+      "enum": ["confirmed", "rejected", "partial"],
+      "description": "confirmed: the driver was right. rejected: it was wrong - a false positive. partial: right branch, imprecise (e.g. broader segment than the true cause)."
+    },
+    "note": {
+      "type": "string",
+      "description": "Free-text reason. May be empty, never required to be non-empty - a bare verdict is still real feedback."
+    },
+    "reviewer": {
+      "type": "object",
+      "description": "Who gave the verdict. Deliberately looser than findings.schema.json's principal object - a reviewer is not always the same principal who asked the original question.",
+      "additionalProperties": true,
+      "properties": {
+        "role": { "type": "string" },
+        "id": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1232,6 +1232,56 @@ software does not work that way and every judge knows it.
   current SC-08 quote was re-read and pasted verbatim into README.md and
   JUDGES.md, not paraphrased from the old Groq version.
 
+## 030 — Objective 7 (analyst/business-user feedback) had no substrate at all; built the capture half, deliberately not the auto-apply half
+**Date:** 2026-09-04 · **Phase:** 7 (post-freeze)
+
+- **Evidence:** Grepped `schemas/`, `engine/`, and every stage for any field
+  or code path capturing an analyst confirming, rejecting, or correcting a
+  driver, tier, or narrative. None existed. The R1 deck's own promised
+  "analyst-verdict loop" (`docs/00_SUBMISSION_STRATEGY.md`'s R1-to-R2
+  tracker note) was never carried into the Phase-0 build, and Track 3's
+  Round 2 brief lists this as objective 7, not an optional extra.
+- **Problem:** Without it, "did you find any gaps yourselves" and "how does
+  the system learn from feedback" had no honest answer beyond "we would
+  build X" - a described design, not a real one.
+- **Decision:** Build the durable-capture half for real, and deliberately
+  stop there rather than also auto-applying feedback to a contract or the
+  generated database. Rule 3 ("thresholds freeze after the benchmark...
+  tuning a threshold because a scenario failed is how a benchmark becomes
+  meaningless") is about not moving the goalposts during evaluation, but
+  the same discipline extends to production: a system that lets recorded
+  feedback silently retune its own detection thresholds or rewrite the
+  context registry is exactly the kind of undocumented drift the tier
+  system exists to prevent. Feedback closes the loop through a human, the
+  same reviewed, git-tracked path every other change to a contract already
+  goes through - not through code that edits itself at runtime.
+- **Change:** `engine/feedback.py` (new) - `record()` appends one
+  append-only line to `runs/feedback.jsonl`, mirroring `engine/audit.py`'s
+  exact pattern (ULID key via the already-pinned `ulid-py`, UTC timestamp,
+  same append-only guarantee); `join_with_audit()` cross-references
+  `runs/audit.jsonl` by `run_id` to attach the KPI/window context a bare
+  feedback record doesn't carry; `review_candidates()` groups rejected
+  verdicts by `(kpi, driver_id)` and surfaces any pair with >= 2
+  independent rejections as a human-reviewable suggestion - never an
+  auto-applied change. A small CLI (`python -m engine.feedback record ...`
+  / `review`) mirrors `eval/trace.py`'s `-m` pattern.
+  `schemas/feedback.schema.json` (new - does not touch the three frozen
+  schemas, per rule 1). `tests/test_feedback.py` (new, 11 tests) - schema
+  validity, load/join round-trips, and two properties modelled directly on
+  `test_tiers_monotone.py`: review flagging is monotone (more feedback can
+  only grow a flag, never remove one), and recording/reviewing feedback
+  never writes to any file under `contracts/` or `schemas/` (asserted by
+  byte-comparing every contract and schema file before and after).
+- **Result:** `pytest` 25/25 (14 previous + 11 new, none touched). Smoke-
+  tested the CLI against the real, locally-accumulated `runs/audit.jsonl`
+  (1,480 lines from this project's own development runs, gitignored, never
+  committed): recorded two independent rejections of `DRIVER-PRIMARY` on
+  `net_revenue` from two real run_ids, `python -m engine.feedback review`
+  correctly surfaced it as a review candidate with the KPI/run_ids attached
+  from the audit join. Removed the demo entries afterward so a fresh clone
+  starts with an empty `runs/feedback.jsonl`, same as `runs/audit.jsonl`
+  starts empty today.
+
 ---
 
 <!--
