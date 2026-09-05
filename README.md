@@ -141,7 +141,7 @@ manifest and the scorecard's own `RETIRED` section, not hidden:
 way GlassBox is — it doesn't investigate a segment, it just talks. But it has
 been run live (OpenAI, `gpt-4o-mini`, same retrieved evidence GlassBox saw,
 one prompt, no pipeline — after Groq's account-level quota and then Gemini's
-rate limit both blocked completion, `CHANGELOG.md` entries 026-027) across
+rate limit both blocked completion, across
 14 of the 15 scored scenarios, and the real, unedited transcript is in
 [`eval/baseline_scorecard.md`](eval/baseline_scorecard.md). B1 (naive
 drill-down — rank the biggest single-dimension segment, cite the most recent
