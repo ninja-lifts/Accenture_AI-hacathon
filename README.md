@@ -13,7 +13,7 @@ a run — home screen, evidence drawer, abstention, a flagged prompt-injection
 document — in [`screenshots/`](screenshots/), not mockups). Everything else
 below is verifiable directly in this repo too: real code, a real committed
 dataset, and a scorecard you can regenerate yourself with no API key.**
-[5-minute evaluation guide](JUDGES.md) · [Reproduce our results](REPRODUCE.md) · [Run traces](TRAJECTORIES.md) · [Improvement changelog](CHANGELOG.md)
+[5-minute evaluation guide](JUDGES.md) · [Reproduce our results](REPRODUCE.md) · [Run traces](TRAJECTORIES.md) ·
 
 ---
 
