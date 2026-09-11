@@ -14,8 +14,4 @@ Everything between those two stages is deterministic Python. The model never
 sees raw customer rows, never chooses a root cause, never assigns a confidence
 tier, and never has tools.
 
-## Changing a prompt
 
-Prompt edits are code changes. Bump the version header, run `make eval`, and
-add a `CHANGELOG.md` entry with the before/after scorecard. A prompt change
-that moves a metric is exactly the kind of evidence the changelog exists for.
