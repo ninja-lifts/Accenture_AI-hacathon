@@ -1,9 +1,5 @@
 # Prompts
 
-Both prompts live here as versioned files, not as string literals buried in
-Python. That is deliberate: a judge assessing an LLM system will look for the
-prompts, and "they are in the repo, versioned, with a changelog" is a better
-answer than pasting them in Q&A.
 
 GlassBox makes exactly **two** LLM calls per run. There is no third. If you
 find yourself adding one, the architecture has drifted - stop and re-read
