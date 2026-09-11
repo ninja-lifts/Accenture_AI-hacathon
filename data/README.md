@@ -11,7 +11,7 @@ reports. Seeded, so the same seed produces a byte-identical dataset.
 It is committed as a **generator plus a manifest**, not as data files. A judge
 runs `make data` and gets exactly what we had.
 
-**Why synthetic is the right choice here, and how to say it:** we need ground
+**Why synthetic is the right choice here:** we need ground
 truth. No public dataset pairs business KPIs with support text *and* labelled
 root causes (see `docs/05_DATA_STRATEGY.md` for the evidence that this gap is
 structural, not a failure of searching). Generating it is the only way to
@@ -30,7 +30,7 @@ pre-registration proof, and it is quoted in the README. Editing ground truth
 after seeing results is the one thing that would make every number in this
 submission meaningless.
 
-## 3. External datasets - never committed
+## 3. External datasets 
 
 | Dataset | Use | Licence | In repo? |
 |---|---|---|---|
